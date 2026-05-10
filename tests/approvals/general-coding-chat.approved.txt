@@ -1,0 +1,3 @@
+prompt: I think we should focus on code quality and make sure everything works well before shipping.
+matches (minScore=15):
+  (none)

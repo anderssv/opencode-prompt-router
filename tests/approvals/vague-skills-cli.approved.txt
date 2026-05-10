@@ -1,0 +1,3 @@
+prompt: Also add that building and distributing skills can be good. A well thought out CLI with raw data fallbacks is better.
+matches (minScore=15):
+  (none)

@@ -1,0 +1,3 @@
+prompt: Let's schedule the sprint review for next week and make sure the team is aligned on priorities.
+matches (minScore=15):
+  (none)

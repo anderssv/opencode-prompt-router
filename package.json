@@ -1,0 +1,20 @@
+{
+  "name": "opencode-prompt-router",
+  "version": "0.1.0",
+  "description": "TF-IDF skill router plugin for OpenCode — auto-loads matching skills based on user prompts",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "test": "bun test"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "skills",
+    "routing"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.4.10"
+  }
+}

@@ -1,0 +1,3 @@
+prompt: Can we set up automatic deployments to staging when we merge to the main branch?
+matches (minScore=15):
+  (none)
