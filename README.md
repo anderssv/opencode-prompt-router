@@ -1,0 +1,65 @@
+# opencode-prompt-router
+
+An OpenCode plugin that automatically matches user prompts to relevant skills (SKILL.md files) using TF-IDF text scoring. When a user sends a message, the router scores all discovered skills and injects a preamble instructing the AI to load the best matches.
+
+## How it works
+
+1. **Discovery** -- Recursively finds `SKILL.md` files in `~/.agents/skills/`, `~/.claude/skills/`, and `<workdir>/.opencode/skills/`
+2. **Parsing** -- Extracts YAML frontmatter (`name`, `description`, `tags`) from each skill file
+3. **Enrichment** -- Auto-derives tags from skill body content for skills without explicit tags
+4. **Scoring** -- Two-stage TF-IDF scoring:
+   - **Stage 1:** Weighted field matching (name ×3, tags ×2, description ×1) with suppressor filtering and IDF floor
+   - **Stage 2:** Body scan bonus for borderline matches
+5. **Routing** -- Returns top N matches above the minimum score, formatted as a preamble prepended to the user's message
+
+## Setup
+
+```bash
+bun install
+```
+
+Add to your `opencode.json`:
+
+```json
+["opencode-prompt-router", { "minScore": 15, "maxPromptLength": 500 }]
+```
+
+## Configuration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `minScore` | 15 | Minimum TF-IDF score to surface a skill |
+| `maxPromptLength` | 500 | Prompts longer than this are skipped |
+
+Set `PROMPT_ROUTER_DEBUG=1` to enable visible preamble output and detailed logging.
+
+All matches are logged to `~/prompt-router.log`.
+
+## Testing
+
+```bash
+bun test
+```
+
+Tests include unit tests for each module, precision regression tests against real skill corpora, and approval-based false-positive tests.
+
+## Project structure
+
+```
+index.ts              Plugin entry point (hooks into chat.message)
+core/
+  tokenizer.ts        Text tokenization + basic stemming
+  parser.ts           YAML frontmatter parser for SKILL.md
+  discovery.ts        Recursive SKILL.md file finder
+  cache.ts            Mtime-based skill cache
+  corpus.ts           IDF index builder
+  enrich.ts           Auto-derives tags from body content
+  scorer.ts           Two-stage TF-IDF scoring
+  router.ts           Orchestrator: discover → score → format
+  config.ts           Default weights, suppressors, thresholds
+  types.ts            Type definitions
+tests/
+  *.test.ts           Unit and regression tests
+  fixtures/skills/    Fixture SKILL.md files
+  approvals/          Approval test snapshots
+```
