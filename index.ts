@@ -50,12 +50,15 @@ interface PromptRouterOptions {
   minScore?: number;
   /** Prompts longer than this are skipped (default: 500) */
   maxPromptLength?: number;
+  /** Enable debug logging to ~/prompt-router.log and chat (default: false) */
+  debug?: boolean;
 }
 
 export const PromptRouter: Plugin = async ({ directory, client }, options?: PromptRouterOptions) => {
   const opts = (options ?? {}) as PromptRouterOptions;
   const minScore = opts.minScore ?? DEFAULT_CONFIG.minScore;
   const maxPromptLength = opts.maxPromptLength ?? 500;
+  const debug = opts.debug ?? !!process.env.PROMPT_ROUTER_DEBUG;
 
   const log = (msg: string) =>
     client.app.log({ body: { service: "prompt-router", level: "info", message: msg } });
@@ -76,14 +79,14 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       const skillPaths = await resolveSkillPaths(directory);
       if (skillPaths.length === 0) return;
 
-      const debug = !!process.env.PROMPT_ROUTER_DEBUG;
       const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
       const result = await route(promptText, config, log);
 
-      // Always log matches for evaluation/tuning (production only, not in tests)
-      const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
-      const prompt = promptText.replace(/\n/g, " ");
-      appendFileSync(MATCH_LOG, `${new Date().toISOString()}  ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
+      if (debug) {
+        const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
+        const prompt = promptText.replace(/\n/g, " ");
+        appendFileSync(MATCH_LOG, `${new Date().toISOString()}  ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
+      }
 
       if (!result.preamble) return;
 
