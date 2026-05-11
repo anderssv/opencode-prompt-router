@@ -64,6 +64,10 @@ bun test
 
 Tests include unit tests for each module, precision regression tests against real skill corpora, and approval-based false-positive tests.
 
+## Inspiration
+
+This project was inspired by [The Prompt Router — a 47ms keyword classifier for context selection](https://wiki.totto.org/blog/2026/04/28/the-prompt-router--a-47ms-keyword-classifier-for-context-selection/).
+
 ## Project structure
 
 ```

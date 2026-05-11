@@ -20,7 +20,7 @@
   "author": "Anders Sveen <anders@f12.no>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anderssv/opencode-prompt-router.git"
+    "url": "git+https://github.com/anderssv/opencode-prompt-router.git"
   },
   "license": "MIT",
   "peerDependencies": {
