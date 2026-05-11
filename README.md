@@ -51,8 +51,9 @@ Add to your `opencode.json`:
 |--------|---------|-------------|
 | `minScore` | 15 | Minimum TF-IDF score to surface a skill |
 | `maxPromptLength` | 500 | Prompts longer than this are skipped |
+| `debug` | false | Enable visible preamble output and detailed logging |
 
-Set `PROMPT_ROUTER_DEBUG=1` to enable visible preamble output and detailed logging.
+Set `PROMPT_ROUTER_DEBUG=1` as an alternative to enable debug mode via environment variable.
 
 All matches are logged to `~/prompt-router.log`.
 
