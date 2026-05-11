@@ -1,7 +1,7 @@
 /**
  * False-positive regression tests using the approval test pattern.
  *
- * Each vague/conversational prompt is routed against the real corpus and
+ * Each vague/conversational prompt is routed against the fixture corpus and
  * the full match output is compared to an .approved.txt snapshot. When
  * scoring changes, the diff shows exactly what shifted — no need to guess
  * which individual assertion broke.
@@ -11,29 +11,18 @@
  *   2. Review the .received.txt file
  *   3. If correct, copy .received.txt → .approved.txt
  *   4. Commit the .approved.txt file
- *
- * Skipped gracefully when ~/.agents/skills doesn't exist.
  */
 import { describe, test, expect, beforeAll } from "bun:test";
 import { join } from "node:path";
-import { access, readFile, writeFile, mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { route } from "../core/router";
 import { DEFAULT_CONFIG } from "../core/config";
 
-const SKILLS_PATH = join(homedir(), ".agents", "skills");
-const CONFIG = { ...DEFAULT_CONFIG, skillPaths: [SKILLS_PATH] };
+const FIXTURES = join(import.meta.dir, "fixtures/skills");
+const CONFIG = { ...DEFAULT_CONFIG, skillPaths: [FIXTURES] };
 const APPROVALS_DIR = join(import.meta.dir, "approvals");
 
-let skillsExist = false;
-
 beforeAll(async () => {
-  try {
-    await access(SKILLS_PATH);
-    skillsExist = true;
-  } catch {
-    skillsExist = false;
-  }
   await mkdir(APPROVALS_DIR, { recursive: true });
 });
 
@@ -53,8 +42,6 @@ function formatResult(prompt: string, matches: { skill: { name: string }; score:
 }
 
 async function verifyRoute(testName: string, prompt: string) {
-  if (!skillsExist) return;
-
   const result = await route(prompt, CONFIG);
   const received = formatResult(prompt, result.matches);
 

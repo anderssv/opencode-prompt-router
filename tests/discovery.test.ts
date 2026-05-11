@@ -27,7 +27,7 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([FIXTURES], cache);
 
-    expect(skills.length).toBe(7);
+    expect(skills.length).toBe(14);
   });
 
   test("returns skills with correct name and description", async () => {
@@ -56,6 +56,6 @@ describe("discoverSkills", () => {
     const cache = new SkillCache();
     const skills = await discoverSkills([FIXTURES, "/nonexistent/path"], cache);
 
-    expect(skills.length).toBe(7);
+    expect(skills.length).toBe(14);
   });
 });
