@@ -23,6 +23,16 @@ Add to your `opencode.json`:
 ```json
 {
   "plugin": [
+    ["opencode-prompt-router", { "minScore": 15, "debug": true }]
+  ]
+}
+```
+
+Or using a GitHub reference directly:
+
+```json
+{
+  "plugin": [
     ["github:anderssv/opencode-prompt-router", { "minScore": 15, "debug": true }]
   ]
 }
