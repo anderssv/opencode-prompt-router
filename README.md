@@ -21,8 +21,29 @@ bun install
 Add to your `opencode.json`:
 
 ```json
-["opencode-prompt-router", { "minScore": 15, "maxPromptLength": 500 }]
+{
+  "plugin": [
+    ["github:anderssv/opencode-prompt-router", { "minScore": 15, "debug": true }]
+  ]
+}
 ```
+
+> **Note:** Using a GitHub reference in the `plugin` array means OpenCode runs
+> `bun install` at startup for each workspace. On the Desktop version this can
+> add noticeable load time. If that's a problem, install via a `package.json`
+> in `~/.config/opencode/` and use a one-line shim in `~/.config/opencode/plugins/`
+> instead:
+>
+> ```json
+> // ~/.config/opencode/package.json
+> { "dependencies": { "opencode-prompt-router": "github:anderssv/opencode-prompt-router" } }
+> ```
+> ```ts
+> // ~/.config/opencode/plugins/prompt-router.ts
+> import type { Plugin } from "@opencode-ai/plugin";
+> import { PromptRouter as _PromptRouter } from "opencode-prompt-router";
+> export const PromptRouter: Plugin = (ctx) => _PromptRouter(ctx, { debug: true });
+> ```
 
 ## Configuration
 
