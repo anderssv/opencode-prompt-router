@@ -35,3 +35,12 @@ Entry point: `index.ts` hooks into `chat.message` events.
 - Configuration centralized in `config.ts`
 - Single external dependency — keep it minimal
 - Test fixtures in `tests/fixtures/skills/`, approval snapshots in `tests/approvals/`
+
+## Release to npm
+
+1. Ensure all tests pass: `bun test`
+2. Bump version in `package.json` (semver: patch/minor/major)
+3. Commit the version bump: `git commit -am "Release vX.Y.Z"`
+4. Tag the release: `git tag vX.Y.Z`
+5. Push with tags: `git push && git push --tags`
+6. Publish: `npm publish` (requires OTP for 2FA)
