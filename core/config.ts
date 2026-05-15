@@ -7,8 +7,14 @@ import type { RouterConfig } from "./types";
 const SUPPRESSORS: string[] = [
   // Generic verbs/actions
   "skill", "help", "build", "make", "add",
+  "find", "search", "look", "read", "return",
+  "check", "show", "run", "set", "get",
   // Ambiguous nouns (common English meaning ≠ skill meaning)
   "event", "events",
+  "file", "files", "directory", "path",
+  "test", "tests",
+  "config", "configuration",
+  "project", "repo", "repository",
   // Adjectives/adverbs
   "good", "better", "well", "new",
   // Pronouns, articles, connectives
