@@ -2,13 +2,16 @@
   "name": "opencode-prompt-router",
   "version": "0.1.0",
   "description": "TF-IDF skill router plugin for OpenCode — auto-loads matching skills based on user prompts",
-  "main": "index.ts",
+  "main": "dist/index.mjs",
   "types": "index.ts",
   "files": [
+    "dist/",
     "index.ts",
     "core/"
   ],
   "scripts": {
+    "build": "bun build index.ts --outfile dist/index.mjs --target bun --format esm",
+    "prepublishOnly": "bun run build",
     "test": "bun test"
   },
   "keywords": [
