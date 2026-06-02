@@ -156,6 +156,10 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
       if (!result.preamble) return;
 
+      if (debug) {
+        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}\n`);
+      }
+
       // Inject preamble as a synthetic text part at the start of the message.
       // When debug is on, show it in the chat so you can see what the router picked.
       const preamblePart = {

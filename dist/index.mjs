@@ -630,6 +630,10 @@ var PromptRouter = async ({ directory, client }, options) => {
       }
       if (!result.preamble)
         return;
+      if (debug) {
+        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}
+`);
+      }
       const preamblePart = {
         id: `prt_prompt-router-${Date.now()}`,
         sessionID: input.sessionID,
