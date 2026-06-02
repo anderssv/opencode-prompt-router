@@ -549,7 +549,10 @@ var PromptRouter = async ({ directory, client }, options) => {
       if (debug) {
         const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
         const prompt = promptText.replace(/\n/g, " ");
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()}  ${prompt}  \u2192  ${matches}  (${result.tookMs}ms)
+        const sessionTokens = [...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => `${t}(${w.toFixed(1)})`).join(", ") || "(none)";
+        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  \u2192  ${matches}  (${result.tookMs}ms)
+`);
+        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}
 `);
       }
       if (!result.preamble)

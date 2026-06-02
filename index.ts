@@ -17,7 +17,7 @@ import { access } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
 import { route } from "./core/router";
 import { DEFAULT_CONFIG } from "./core/config";
-import { createSessionContext, recordTokens, recordMatches } from "./core/session";
+import { createSessionContext, recordTokens, recordMatches, getSessionWeights } from "./core/session";
 import { eligibleTokens } from "./core/scorer";
 import type { SessionContext } from "./core/session";
 
@@ -105,7 +105,12 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       if (debug) {
         const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
         const prompt = promptText.replace(/\n/g, " ");
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()}  ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
+        const sessionTokens = [...getSessionWeights(sessionCtx).entries()]
+          .filter(([, w]) => w >= 0.3)
+          .map(([t, w]) => `${t}(${w.toFixed(1)})`)
+          .join(", ") || "(none)";
+        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
+        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}\n`);
       }
 
       if (!result.preamble) return;
