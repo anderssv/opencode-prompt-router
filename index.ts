@@ -13,9 +13,9 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
-import { route } from "./core/router";
+import { route, extractProjectTokens } from "./core/router";
 import { DEFAULT_CONFIG } from "./core/config";
 import { createSessionContext, recordTokens, recordMatches, getSessionWeights } from "./core/session";
 import { tokenize } from "./core/tokenizer";
@@ -65,6 +65,14 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
   // Session context map — persists across messages within the plugin lifetime
   const sessions = new Map<string, SessionContext>();
+  // Track whether we've seeded a session with project tokens
+  const seededSessions = new Set<string>();
+
+  // AGENTS.md locations to check for project context
+  const agentsMdPaths = [
+    join(directory, "AGENTS.md"),
+    join(directory, ".opencode", "AGENTS.md"),
+  ];
 
   const log = (msg: string) =>
     client.app.log({ body: { service: "prompt-router", level: "info", message: msg } });
@@ -93,6 +101,35 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       const sessionCtx = sessions.get(sessionID)!;
 
       const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
+
+      // Seed session with AGENTS.md project tokens (once per session)
+      if (!seededSessions.has(sessionID)) {
+        seededSessions.add(sessionID);
+        for (const agentsPath of agentsMdPaths) {
+          try {
+            const content = await readFile(agentsPath, "utf-8");
+            const projectTokens = await extractProjectTokens(content, config);
+            // Cap at 20 tokens to avoid noise from very long files
+            const capped = projectTokens.slice(0, 20);
+            if (capped.length > 0) {
+              // Pin these as permanent session tokens
+              for (const t of capped) {
+                sessionCtx.pinnedTokens.add(t);
+                if (!sessionCtx.tokens.has(t)) {
+                  sessionCtx.tokens.set(t, { count: 1, lastSeen: 0 });
+                }
+              }
+              if (debug) {
+                appendFileSync(MATCH_LOG, `${new Date().toISOString()} [project] seeded from ${agentsPath}: ${capped.join(", ")}\n`);
+              }
+            }
+            break; // Use first AGENTS.md found
+          } catch {
+            // File doesn't exist, try next
+          }
+        }
+      }
+
       const result = await route(promptText, config, log, sessionCtx);
 
       // Record only corpus-relevant tokens (those in skill name/tags) into session

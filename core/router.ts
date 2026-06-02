@@ -130,3 +130,26 @@ export async function route(
     corpusRelevantTokens,
   };
 }
+
+/**
+ * Extract corpus-relevant tokens from arbitrary text (e.g., AGENTS.md).
+ * Returns deduplicated tokens that exist in any skill's name/tags.
+ * Requires skills to be discovered first.
+ */
+export async function extractProjectTokens(
+  text: string,
+  config: RouterConfig,
+): Promise<string[]> {
+  const skills = await discoverSkills(config.skillPaths, globalCache);
+  const index = cachedCorpusIndex(skills);
+
+  const allNameTagTokens = new Set<string>();
+  for (const skill of skills) {
+    for (const t of tokenize(skill.name)) allNameTagTokens.add(t);
+    for (const t of tokenize((skill.tags ?? []).join(" "))) allNameTagTokens.add(t);
+  }
+
+  const tokens = eligibleTokens(text, config, index);
+  const relevant = [...new Set(tokens.filter((t) => allNameTagTokens.has(t)))];
+  return relevant;
+}

@@ -2,7 +2,7 @@
 // index.ts
 import { homedir } from "os";
 import { join as join2 } from "path";
-import { access } from "fs/promises";
+import { access, readFile as readFile2 } from "fs/promises";
 import { appendFileSync } from "fs";
 
 // core/cache.ts
@@ -433,6 +433,20 @@ async function route(prompt, config, log, sessionCtx) {
     corpusRelevantTokens
   };
 }
+async function extractProjectTokens(text, config) {
+  const skills = await discoverSkills(config.skillPaths, globalCache);
+  const index = cachedCorpusIndex(skills);
+  const allNameTagTokens = new Set;
+  for (const skill of skills) {
+    for (const t of tokenize(skill.name))
+      allNameTagTokens.add(t);
+    for (const t of tokenize((skill.tags ?? []).join(" ")))
+      allNameTagTokens.add(t);
+  }
+  const tokens = eligibleTokens(text, config, index);
+  const relevant = [...new Set(tokens.filter((t) => allNameTagTokens.has(t)))];
+  return relevant;
+}
 
 // core/config.ts
 var SUPPRESSORS = [
@@ -551,6 +565,11 @@ var PromptRouter = async ({ directory, client }, options) => {
   const maxPromptLength = opts.maxPromptLength ?? 500;
   const debug = opts.debug ?? !!process.env.PROMPT_ROUTER_DEBUG;
   const sessions = new Map;
+  const seededSessions = new Set;
+  const agentsMdPaths = [
+    join2(directory, "AGENTS.md"),
+    join2(directory, ".opencode", "AGENTS.md")
+  ];
   const log = (msg) => client.app.log({ body: { service: "prompt-router", level: "info", message: msg } });
   return {
     "chat.message": async (input, output) => {
@@ -568,6 +587,29 @@ var PromptRouter = async ({ directory, client }, options) => {
       }
       const sessionCtx = sessions.get(sessionID);
       const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
+      if (!seededSessions.has(sessionID)) {
+        seededSessions.add(sessionID);
+        for (const agentsPath of agentsMdPaths) {
+          try {
+            const content = await readFile2(agentsPath, "utf-8");
+            const projectTokens = await extractProjectTokens(content, config);
+            const capped = projectTokens.slice(0, 20);
+            if (capped.length > 0) {
+              for (const t of capped) {
+                sessionCtx.pinnedTokens.add(t);
+                if (!sessionCtx.tokens.has(t)) {
+                  sessionCtx.tokens.set(t, { count: 1, lastSeen: 0 });
+                }
+              }
+              if (debug) {
+                appendFileSync(MATCH_LOG, `${new Date().toISOString()} [project] seeded from ${agentsPath}: ${capped.join(", ")}
+`);
+              }
+            }
+            break;
+          } catch {}
+        }
+      }
       const result = await route(promptText, config, log, sessionCtx);
       recordTokens(sessionCtx, result.corpusRelevantTokens);
       if (result.matches.length > 0) {
