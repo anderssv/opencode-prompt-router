@@ -620,20 +620,20 @@ var PromptRouter = async ({ directory, client }, options) => {
         recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
       }
       if (debug) {
-        const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
-        const prompt = promptText.replace(/\n/g, " ");
-        const sessionTokens = [...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => `${t}(${w.toFixed(1)})`).join(", ") || "(none)";
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  \u2192  ${matches}  (${result.tookMs}ms)
+        if (result.preamble) {
+          const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ");
+          const prompt = promptText.replace(/\n/g, " ");
+          const sessionTokens = [...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => `${t}(${w.toFixed(1)})`).join(", ") || "(none)";
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  \u2192  ${matches}  (${result.tookMs}ms)
 `);
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}
 `);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}
+`);
+        }
       }
       if (!result.preamble)
         return;
-      if (debug) {
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}
-`);
-      }
       const preamblePart = {
         id: `prt_prompt-router-${Date.now()}`,
         sessionID: input.sessionID,

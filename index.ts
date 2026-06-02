@@ -144,21 +144,20 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       }
 
       if (debug) {
-        const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
-        const prompt = promptText.replace(/\n/g, " ");
-        const sessionTokens = [...getSessionWeights(sessionCtx).entries()]
-          .filter(([, w]) => w >= 0.3)
-          .map(([t, w]) => `${t}(${w.toFixed(1)})`)
-          .join(", ") || "(none)";
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}\n`);
+        if (result.preamble) {
+          const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ");
+          const prompt = promptText.replace(/\n/g, " ");
+          const sessionTokens = [...getSessionWeights(sessionCtx).entries()]
+            .filter(([, w]) => w >= 0.3)
+            .map(([t, w]) => `${t}(${w.toFixed(1)})`)
+            .join(", ") || "(none)";
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}\n`);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}\n`);
+        }
       }
 
       if (!result.preamble) return;
-
-      if (debug) {
-        appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}\n`);
-      }
 
       // Inject preamble as a synthetic text part at the start of the message.
       // When debug is on, show it in the chat so you can see what the router picked.
