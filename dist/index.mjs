@@ -300,6 +300,7 @@ function createSessionContext() {
   return {
     tokens: new Map,
     matchedSkills: new Set,
+    pinnedTokens: new Set,
     messageCount: 0
   };
 }
@@ -315,20 +316,34 @@ function recordTokens(ctx, tokens) {
     }
   }
 }
-function recordMatches(ctx, skillNames) {
+function recordMatches(ctx, skillNames, skillTokens) {
   for (const name of skillNames) {
     ctx.matchedSkills.add(name);
   }
+  if (skillTokens) {
+    for (const t of skillTokens) {
+      ctx.pinnedTokens.add(t);
+      if (!ctx.tokens.has(t)) {
+        ctx.tokens.set(t, { count: 1, lastSeen: ctx.messageCount });
+      }
+    }
+  }
 }
-function getSessionWeights(ctx, decay = 0.7) {
+function getSessionWeights(ctx, decay = 0.9) {
   const weights = new Map;
   if (ctx.messageCount === 0)
     return weights;
+  const pinnedTokens = ctx.pinnedTokens ?? new Set;
   for (const [token, entry] of ctx.tokens) {
-    const age = ctx.messageCount - entry.lastSeen;
-    const recencyWeight = Math.pow(decay, age);
-    const freqBoost = Math.min(Math.sqrt(entry.count), 2);
-    weights.set(token, recencyWeight * freqBoost);
+    if (pinnedTokens.has(token)) {
+      const freqBoost = Math.min(Math.sqrt(entry.count), 2);
+      weights.set(token, freqBoost);
+    } else {
+      const age = ctx.messageCount - entry.lastSeen;
+      const recencyWeight = Math.pow(decay, age);
+      const freqBoost = Math.min(Math.sqrt(entry.count), 2);
+      weights.set(token, recencyWeight * freqBoost);
+    }
   }
   return weights;
 }
@@ -556,7 +571,11 @@ var PromptRouter = async ({ directory, client }, options) => {
       const result = await route(promptText, config, log, sessionCtx);
       recordTokens(sessionCtx, result.corpusRelevantTokens);
       if (result.matches.length > 0) {
-        recordMatches(sessionCtx, result.matches.map((m) => m.skill.name));
+        const skillTokens = result.matches.flatMap((m) => [
+          ...tokenize(m.skill.name),
+          ...tokenize((m.skill.tags ?? []).join(" "))
+        ]);
+        recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
       }
       if (debug) {
         const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";

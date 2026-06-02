@@ -60,4 +60,35 @@ describe("session context", () => {
     const ctx = createSessionContext();
     expect(getSessionWeights(ctx).size).toBe(0);
   });
+
+  it("pinned tokens from matched skills never decay", () => {
+    const ctx = createSessionContext();
+    recordTokens(ctx, ["kotlin"]);
+    recordMatches(ctx, ["kotlin-tdd"], ["kotlin", "tdd"]);
+
+    // Advance many messages without mentioning kotlin/tdd
+    recordTokens(ctx, ["deploy"]);
+    recordTokens(ctx, ["deploy"]);
+    recordTokens(ctx, ["deploy"]);
+    recordTokens(ctx, ["deploy"]);
+    recordTokens(ctx, ["deploy"]);
+
+    const weights = getSessionWeights(ctx, 0.9);
+    // "kotlin" and "tdd" are pinned — should still have weight >= 1.0
+    expect(weights.get("kotlin")!).toBeGreaterThanOrEqual(1.0);
+    expect(weights.get("tdd")!).toBeGreaterThanOrEqual(1.0);
+    // "deploy" is recent (age=0), also high
+    expect(weights.get("deploy")!).toBeGreaterThan(0.3);
+  });
+
+  it("uses 0.9 decay by default — tokens last longer", () => {
+    const ctx = createSessionContext();
+    recordTokens(ctx, ["kotlin"]);
+    // 7 messages later
+    for (let i = 0; i < 7; i++) recordTokens(ctx, ["other"]);
+
+    const weights = getSessionWeights(ctx); // default 0.9
+    // 0.9^7 = 0.478 — still above 0.3 threshold
+    expect(weights.get("kotlin")!).toBeGreaterThan(0.3);
+  });
 });

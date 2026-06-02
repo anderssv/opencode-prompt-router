@@ -18,6 +18,7 @@ import { appendFileSync } from "node:fs";
 import { route } from "./core/router";
 import { DEFAULT_CONFIG } from "./core/config";
 import { createSessionContext, recordTokens, recordMatches, getSessionWeights } from "./core/session";
+import { tokenize } from "./core/tokenizer";
 import type { SessionContext } from "./core/session";
 
 const MATCH_LOG = join(homedir(), "prompt-router.log");
@@ -97,7 +98,12 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       // Record only corpus-relevant tokens (those in skill name/tags) into session
       recordTokens(sessionCtx, result.corpusRelevantTokens);
       if (result.matches.length > 0) {
-        recordMatches(sessionCtx, result.matches.map((m) => m.skill.name));
+        // Pin matched skill name/tag tokens so they persist for the session
+        const skillTokens = result.matches.flatMap((m) => [
+          ...tokenize(m.skill.name),
+          ...tokenize((m.skill.tags ?? []).join(" ")),
+        ]);
+        recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
       }
 
       if (debug) {
