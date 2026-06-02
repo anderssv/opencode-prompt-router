@@ -42,4 +42,5 @@ export const DEFAULT_CONFIG: RouterConfig = {
   maxMatchingTokens: 4,
   minMatchingTokens: 2,
   stage2CharLimit: 6000,
+  excludeSkills: ["find-skills"],
 };

@@ -346,6 +346,21 @@ function cachedCorpusIndex(skills) {
 }
 var PREAMBLE_DESC_LIMIT = 120;
 var STAGE2_WINDOW_FACTOR = 3;
+var SESSION_AFFINITY_BONUS = 5;
+function sessionBonus(skill, sessionWeights) {
+  if (sessionWeights.size === 0)
+    return 0;
+  const nameTokens = new Set(tokenize(skill.name));
+  const tagTokens = new Set(tokenize((skill.tags ?? []).join(" ")));
+  for (const [token, weight] of sessionWeights) {
+    if (weight < 0.3)
+      continue;
+    if (nameTokens.has(token) || tagTokens.has(token)) {
+      return SESSION_AFFINITY_BONUS;
+    }
+  }
+  return 0;
+}
 function formatPreamble(matches) {
   if (matches.length === 0)
     return "";
@@ -372,30 +387,26 @@ async function route(prompt, config, log, sessionCtx) {
       skill.tags = deriveTags(skill, skills);
     }
   }
-  let augmentedPrompt = prompt;
-  if (sessionCtx && sessionCtx.messageCount > 0) {
-    const sessionWeights = getSessionWeights(sessionCtx);
-    const sessionBoostTokens = [];
-    for (const [token, weight] of sessionWeights) {
-      if (weight >= 0.3) {
-        sessionBoostTokens.push(token);
-      }
-    }
-    if (sessionBoostTokens.length > 0) {
-      augmentedPrompt = prompt + " " + sessionBoostTokens.join(" ");
-      if (config.debug) {
-        await log?.(`[prompt-router] session boost tokens: ${sessionBoostTokens.slice(0, 10).join(", ")}`);
-      }
-    }
-  }
+  const sessionWeights = sessionCtx && sessionCtx.messageCount > 0 ? getSessionWeights(sessionCtx) : new Map;
   const scored = skills.map((skill) => {
-    const score = scoreSkill(augmentedPrompt, skill, config, index);
+    const score = scoreSkill(prompt, skill, config, index);
     const nearThreshold = score >= config.minScore && score <= config.minScore * STAGE2_WINDOW_FACTOR;
-    const bonus = nearThreshold ? scoreStage2(augmentedPrompt, skill, config, index) : 0;
-    return { skill, score: score + bonus };
+    const bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
+    const sessBonus = sessionBonus(skill, sessionWeights);
+    return { skill, score: score + bonus + sessBonus };
   });
-  const matches = scored.filter(({ score }) => score >= config.minScore).sort((a, b) => b.score - a.score).slice(0, config.topN);
+  const excludeSet = new Set(config.excludeSkills ?? []);
+  const matches = scored.filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name)).sort((a, b) => b.score - a.score).slice(0, config.topN);
   const tookMs = Date.now() - start;
+  const allNameTagTokens = new Set;
+  for (const skill of skills) {
+    for (const t of tokenize(skill.name))
+      allNameTagTokens.add(t);
+    for (const t of tokenize((skill.tags ?? []).join(" ")))
+      allNameTagTokens.add(t);
+  }
+  const promptTokens = eligibleTokens(prompt, config, index);
+  const corpusRelevantTokens = promptTokens.filter((t) => allNameTagTokens.has(t));
   if (config.debug) {
     const matchSummary = matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
     await log?.(`[prompt-router] matches: ${matchSummary} \u2014 ${tookMs}ms`);
@@ -403,7 +414,8 @@ async function route(prompt, config, log, sessionCtx) {
   return {
     matches,
     preamble: formatPreamble(matches),
-    tookMs
+    tookMs,
+    corpusRelevantTokens
   };
 }
 
@@ -491,7 +503,8 @@ var DEFAULT_CONFIG = {
   idfFloor: 1.5,
   maxMatchingTokens: 4,
   minMatchingTokens: 2,
-  stage2CharLimit: 6000
+  stage2CharLimit: 6000,
+  excludeSkills: ["find-skills"]
 };
 
 // index.ts
@@ -541,8 +554,7 @@ var PromptRouter = async ({ directory, client }, options) => {
       const sessionCtx = sessions.get(sessionID);
       const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
       const result = await route(promptText, config, log, sessionCtx);
-      const currentTokens = eligibleTokens(promptText, config);
-      recordTokens(sessionCtx, currentTokens);
+      recordTokens(sessionCtx, result.corpusRelevantTokens);
       if (result.matches.length > 0) {
         recordMatches(sessionCtx, result.matches.map((m) => m.skill.name));
       }

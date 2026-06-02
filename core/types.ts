@@ -21,6 +21,8 @@ export interface RouterConfig {
   minMatchingTokens: number;
   stage2CharLimit: number;
   debug?: boolean;
+  /** Skills to never surface (e.g. meta-skills like find-skills) */
+  excludeSkills?: string[];
 }
 
 export interface ScoredSkill {
@@ -32,4 +34,6 @@ export interface RouteResult {
   matches: ScoredSkill[];
   preamble: string;
   tookMs: number;
+  /** Prompt tokens that exist in any skill's name or tags (useful for session recording) */
+  corpusRelevantTokens: string[];
 }

@@ -18,7 +18,6 @@ import { appendFileSync } from "node:fs";
 import { route } from "./core/router";
 import { DEFAULT_CONFIG } from "./core/config";
 import { createSessionContext, recordTokens, recordMatches, getSessionWeights } from "./core/session";
-import { eligibleTokens } from "./core/scorer";
 import type { SessionContext } from "./core/session";
 
 const MATCH_LOG = join(homedir(), "prompt-router.log");
@@ -95,9 +94,8 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
       const result = await route(promptText, config, log, sessionCtx);
 
-      // Record current prompt tokens and matches into session context
-      const currentTokens = eligibleTokens(promptText, config);
-      recordTokens(sessionCtx, currentTokens);
+      // Record only corpus-relevant tokens (those in skill name/tags) into session
+      recordTokens(sessionCtx, result.corpusRelevantTokens);
       if (result.matches.length > 0) {
         recordMatches(sessionCtx, result.matches.map((m) => m.skill.name));
       }
