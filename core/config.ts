@@ -9,12 +9,16 @@ const SUPPRESSORS: string[] = [
   "skill", "help", "build", "make", "add",
   "find", "search", "look", "read", "return",
   "check", "show", "run", "set", "get",
+  "use", "update", "create", "give", "open",
   // Ambiguous nouns (common English meaning ≠ skill meaning)
   "event", "events",
   "file", "files", "directory", "path",
   "test", "tests",
   "config", "configuration",
   "project", "repo", "repository",
+  "git", "branch", "sha",
+  "url", "link", "api",
+  "session", "service",
   // Adjectives/adverbs
   "good", "better", "well", "new",
   // Pronouns, articles, connectives
