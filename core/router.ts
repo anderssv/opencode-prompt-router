@@ -1,9 +1,11 @@
 import type { RouterConfig, RouteResult } from "./types";
 import { SkillCache } from "./cache";
 import { discoverSkills } from "./discovery";
-import { scoreSkill, scoreStage2 } from "./scorer";
+import { scoreSkill, scoreStage2, eligibleTokens } from "./scorer";
 import { buildCorpusIndex } from "./corpus";
 import { deriveTags } from "./enrich";
+import { getSessionWeights } from "./session";
+import type { SessionContext } from "./session";
 
 import type { CorpusIndex } from "./corpus";
 
@@ -37,6 +39,7 @@ export async function route(
   prompt: string,
   config: RouterConfig,
   log?: (msg: string) => Promise<void> | void,
+  sessionCtx?: SessionContext,
 ): Promise<RouteResult> {
   const start = Date.now();
   const skills = await discoverSkills(config.skillPaths, globalCache);
@@ -55,13 +58,34 @@ export async function route(
     }
   }
 
+  // Build session-augmented prompt: append weighted session tokens
+  let augmentedPrompt = prompt;
+  if (sessionCtx && sessionCtx.messageCount > 0) {
+    const sessionWeights = getSessionWeights(sessionCtx);
+    // Only include session tokens that pass a minimum weight threshold
+    const sessionBoostTokens: string[] = [];
+    for (const [token, weight] of sessionWeights) {
+      if (weight >= 0.3) {
+        sessionBoostTokens.push(token);
+      }
+    }
+    if (sessionBoostTokens.length > 0) {
+      // Append session tokens so they contribute to scoring
+      // (they'll still need to pass eligibility/suppressor checks)
+      augmentedPrompt = prompt + " " + sessionBoostTokens.join(" ");
+      if (config.debug) {
+        await log?.(`[prompt-router] session boost tokens: ${sessionBoostTokens.slice(0, 10).join(", ")}`);
+      }
+    }
+  }
+
   const scored = skills.map((skill) => {
-    const score = scoreSkill(prompt, skill, config, index);
+    const score = scoreSkill(augmentedPrompt, skill, config, index);
 
     // Stage 2: run for skills near the scoring threshold
     const nearThreshold =
       score >= config.minScore && score <= config.minScore * STAGE2_WINDOW_FACTOR;
-    const bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
+    const bonus = nearThreshold ? scoreStage2(augmentedPrompt, skill, config, index) : 0;
 
     return { skill, score: score + bonus };
   });

@@ -295,6 +295,44 @@ function deriveTags(skill, allSkills) {
   return candidates.slice(0, MAX_DERIVED_TAGS).map((c) => c.token);
 }
 
+// core/session.ts
+function createSessionContext() {
+  return {
+    tokens: new Map,
+    matchedSkills: new Set,
+    messageCount: 0
+  };
+}
+function recordTokens(ctx, tokens) {
+  ctx.messageCount++;
+  for (const t of tokens) {
+    const existing = ctx.tokens.get(t);
+    if (existing) {
+      existing.count++;
+      existing.lastSeen = ctx.messageCount;
+    } else {
+      ctx.tokens.set(t, { count: 1, lastSeen: ctx.messageCount });
+    }
+  }
+}
+function recordMatches(ctx, skillNames) {
+  for (const name of skillNames) {
+    ctx.matchedSkills.add(name);
+  }
+}
+function getSessionWeights(ctx, decay = 0.7) {
+  const weights = new Map;
+  if (ctx.messageCount === 0)
+    return weights;
+  for (const [token, entry] of ctx.tokens) {
+    const age = ctx.messageCount - entry.lastSeen;
+    const recencyWeight = Math.pow(decay, age);
+    const freqBoost = Math.min(Math.sqrt(entry.count), 2);
+    weights.set(token, recencyWeight * freqBoost);
+  }
+  return weights;
+}
+
 // core/router.ts
 var globalCache = new SkillCache;
 var cachedCorpus;
@@ -321,7 +359,7 @@ function formatPreamble(matches) {
 ${lines.join(`
 `)}`;
 }
-async function route(prompt, config, log) {
+async function route(prompt, config, log, sessionCtx) {
   const start = Date.now();
   const skills = await discoverSkills(config.skillPaths, globalCache);
   if (config.debug) {
@@ -334,10 +372,26 @@ async function route(prompt, config, log) {
       skill.tags = deriveTags(skill, skills);
     }
   }
+  let augmentedPrompt = prompt;
+  if (sessionCtx && sessionCtx.messageCount > 0) {
+    const sessionWeights = getSessionWeights(sessionCtx);
+    const sessionBoostTokens = [];
+    for (const [token, weight] of sessionWeights) {
+      if (weight >= 0.3) {
+        sessionBoostTokens.push(token);
+      }
+    }
+    if (sessionBoostTokens.length > 0) {
+      augmentedPrompt = prompt + " " + sessionBoostTokens.join(" ");
+      if (config.debug) {
+        await log?.(`[prompt-router] session boost tokens: ${sessionBoostTokens.slice(0, 10).join(", ")}`);
+      }
+    }
+  }
   const scored = skills.map((skill) => {
-    const score = scoreSkill(prompt, skill, config, index);
+    const score = scoreSkill(augmentedPrompt, skill, config, index);
     const nearThreshold = score >= config.minScore && score <= config.minScore * STAGE2_WINDOW_FACTOR;
-    const bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
+    const bonus = nearThreshold ? scoreStage2(augmentedPrompt, skill, config, index) : 0;
     return { skill, score: score + bonus };
   });
   const matches = scored.filter(({ score }) => score >= config.minScore).sort((a, b) => b.score - a.score).slice(0, config.topN);
@@ -468,6 +522,7 @@ var PromptRouter = async ({ directory, client }, options) => {
   const minScore = opts.minScore ?? DEFAULT_CONFIG.minScore;
   const maxPromptLength = opts.maxPromptLength ?? 500;
   const debug = opts.debug ?? !!process.env.PROMPT_ROUTER_DEBUG;
+  const sessions = new Map;
   const log = (msg) => client.app.log({ body: { service: "prompt-router", level: "info", message: msg } });
   return {
     "chat.message": async (input, output) => {
@@ -479,8 +534,18 @@ var PromptRouter = async ({ directory, client }, options) => {
       const skillPaths = await resolveSkillPaths(directory);
       if (skillPaths.length === 0)
         return;
+      const sessionID = input.sessionID;
+      if (!sessions.has(sessionID)) {
+        sessions.set(sessionID, createSessionContext());
+      }
+      const sessionCtx = sessions.get(sessionID);
       const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
-      const result = await route(promptText, config, log);
+      const result = await route(promptText, config, log, sessionCtx);
+      const currentTokens = eligibleTokens(promptText, config);
+      recordTokens(sessionCtx, currentTokens);
+      if (result.matches.length > 0) {
+        recordMatches(sessionCtx, result.matches.map((m) => m.skill.name));
+      }
       if (debug) {
         const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
         const prompt = promptText.replace(/\n/g, " ");

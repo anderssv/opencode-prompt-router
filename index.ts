@@ -17,6 +17,9 @@ import { access } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
 import { route } from "./core/router";
 import { DEFAULT_CONFIG } from "./core/config";
+import { createSessionContext, recordTokens, recordMatches } from "./core/session";
+import { eligibleTokens } from "./core/scorer";
+import type { SessionContext } from "./core/session";
 
 const MATCH_LOG = join(homedir(), "prompt-router.log");
 
@@ -60,6 +63,9 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
   const maxPromptLength = opts.maxPromptLength ?? 500;
   const debug = opts.debug ?? !!process.env.PROMPT_ROUTER_DEBUG;
 
+  // Session context map — persists across messages within the plugin lifetime
+  const sessions = new Map<string, SessionContext>();
+
   const log = (msg: string) =>
     client.app.log({ body: { service: "prompt-router", level: "info", message: msg } });
 
@@ -79,8 +85,22 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       const skillPaths = await resolveSkillPaths(directory);
       if (skillPaths.length === 0) return;
 
+      // Get or create session context
+      const sessionID = input.sessionID;
+      if (!sessions.has(sessionID)) {
+        sessions.set(sessionID, createSessionContext());
+      }
+      const sessionCtx = sessions.get(sessionID)!;
+
       const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
-      const result = await route(promptText, config, log);
+      const result = await route(promptText, config, log, sessionCtx);
+
+      // Record current prompt tokens and matches into session context
+      const currentTokens = eligibleTokens(promptText, config);
+      recordTokens(sessionCtx, currentTokens);
+      if (result.matches.length > 0) {
+        recordMatches(sessionCtx, result.matches.map((m) => m.skill.name));
+      }
 
       if (debug) {
         const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ") || "(none)";
