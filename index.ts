@@ -145,14 +145,14 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
       if (debug) {
         if (result.preamble) {
-          const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ");
-          const prompt = promptText.replace(/\n/g, " ");
           const sessionTokens = [...getSessionWeights(sessionCtx).entries()]
             .filter(([, w]) => w >= 0.3)
             .map(([t, w]) => `${t}(${w.toFixed(1)})`)
             .join(", ") || "(none)";
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
+          const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ");
+          const prompt = promptText.replace(/\n/g, " ");
           appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}\n`);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
           appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}\n`);
         }
       }
