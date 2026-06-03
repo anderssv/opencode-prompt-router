@@ -79,6 +79,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
   return {
     "chat.message": async (input, output) => {
+      try {
       // Extract plain text from existing parts to form the routing prompt
       const promptText = output.parts
         .filter((p) => p.type === "text")
@@ -194,6 +195,15 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       };
 
       output.parts.push(preamblePart);
+      } catch (err) {
+        // Never let the plugin crash the host session
+        try {
+          const msg = err instanceof Error ? err.message : String(err);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error] ${msg}\n`);
+        } catch {
+          // Even logging failed — swallow silently
+        }
+      }
     },
   };
 };

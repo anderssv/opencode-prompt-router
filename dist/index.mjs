@@ -591,98 +591,106 @@ var PromptRouter = async ({ directory, client }, options) => {
   const log = (msg) => client.app.log({ body: { service: "prompt-router", level: "info", message: msg } });
   return {
     "chat.message": async (input, output) => {
-      const promptText = output.parts.filter((p) => p.type === "text").map((p) => ("text" in p) ? p.text : "").join(" ");
-      if (!promptText.trim())
-        return;
-      if (promptText.length > maxPromptLength)
-        return;
-      const skillPaths = await resolveSkillPaths(directory);
-      if (skillPaths.length === 0)
-        return;
-      const sessionID = input.sessionID;
-      if (!sessions.has(sessionID)) {
-        sessions.set(sessionID, createSessionContext());
-      }
-      const sessionCtx = sessions.get(sessionID);
-      const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
-      if (!seededSessions.has(sessionID)) {
-        seededSessions.add(sessionID);
-        for (const agentsPath of agentsMdPaths) {
-          try {
-            const content = await readFile2(agentsPath, "utf-8");
-            const projectTokens = await extractProjectTokens(content, config);
-            const capped = projectTokens.slice(0, 20);
-            if (capped.length > 0) {
-              for (const t of capped) {
-                sessionCtx.pinnedTokens.add(t);
-                if (!sessionCtx.tokens.has(t)) {
-                  sessionCtx.tokens.set(t, { count: 1, lastSeen: 0 });
+      try {
+        const promptText = output.parts.filter((p) => p.type === "text").map((p) => ("text" in p) ? p.text : "").join(" ");
+        if (!promptText.trim())
+          return;
+        if (promptText.length > maxPromptLength)
+          return;
+        const skillPaths = await resolveSkillPaths(directory);
+        if (skillPaths.length === 0)
+          return;
+        const sessionID = input.sessionID;
+        if (!sessions.has(sessionID)) {
+          sessions.set(sessionID, createSessionContext());
+        }
+        const sessionCtx = sessions.get(sessionID);
+        const config = { ...DEFAULT_CONFIG, skillPaths, debug, minScore };
+        if (!seededSessions.has(sessionID)) {
+          seededSessions.add(sessionID);
+          for (const agentsPath of agentsMdPaths) {
+            try {
+              const content = await readFile2(agentsPath, "utf-8");
+              const projectTokens = await extractProjectTokens(content, config);
+              const capped = projectTokens.slice(0, 20);
+              if (capped.length > 0) {
+                for (const t of capped) {
+                  sessionCtx.pinnedTokens.add(t);
+                  if (!sessionCtx.tokens.has(t)) {
+                    sessionCtx.tokens.set(t, { count: 1, lastSeen: 0 });
+                  }
+                }
+                if (debug) {
+                  appendFileSync(MATCH_LOG, `${new Date().toISOString()} [project] seeded from ${agentsPath}: ${capped.join(", ")}
+`);
                 }
               }
-              if (debug) {
-                appendFileSync(MATCH_LOG, `${new Date().toISOString()} [project] seeded from ${agentsPath}: ${capped.join(", ")}
-`);
-              }
-            }
-            break;
-          } catch {}
+              break;
+            } catch {}
+          }
         }
-      }
-      const result = await route(promptText, config, log, sessionCtx);
-      recordTokens(sessionCtx, result.corpusRelevantTokens);
-      if (result.matches.length > 0) {
-        const skillTokens = result.matches.flatMap((m) => [
-          ...tokenize(m.skill.name),
-          ...tokenize((m.skill.tags ?? []).join(" "))
-        ]);
-        recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
-      }
-      if (debug) {
-        const ts = new Date().toISOString();
-        const sessionTokens = Object.fromEntries([...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => [t, +w.toFixed(1)]));
-        const formatScored = (m) => ({
-          skill: m.skill.name,
-          stage1: +m.breakdown.stage1Score.toFixed(1),
-          stage2: +m.breakdown.stage2Bonus.toFixed(1),
-          sessionBonus: m.breakdown.sessionBonus,
-          total: +m.breakdown.totalScore.toFixed(1),
-          hits: m.breakdown.tokenHits.map((h) => ({
-            token: h.token,
-            fields: h.fields,
-            idf: +h.idf.toFixed(2),
-            score: +h.contribution.toFixed(1)
-          }))
-        });
-        const entry = {
-          ts,
-          action: result.preamble ? "inject" : "skip",
-          prompt: promptText.replace(/\n/g, " "),
-          eligible: result.eligibleTokens,
-          session: sessionTokens,
-          ms: result.tookMs
-        };
+        const result = await route(promptText, config, log, sessionCtx);
+        recordTokens(sessionCtx, result.corpusRelevantTokens);
         if (result.matches.length > 0) {
-          entry.matches = result.matches.map(formatScored);
+          const skillTokens = result.matches.flatMap((m) => [
+            ...tokenize(m.skill.name),
+            ...tokenize((m.skill.tags ?? []).join(" "))
+          ]);
+          recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
         }
-        if (result.nearMisses.length > 0) {
-          entry.nearMisses = result.nearMisses.map(formatScored);
-        }
-        appendFileSync(MATCH_LOG, JSON.stringify(entry) + `
+        if (debug) {
+          const ts = new Date().toISOString();
+          const sessionTokens = Object.fromEntries([...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => [t, +w.toFixed(1)]));
+          const formatScored = (m) => ({
+            skill: m.skill.name,
+            stage1: +m.breakdown.stage1Score.toFixed(1),
+            stage2: +m.breakdown.stage2Bonus.toFixed(1),
+            sessionBonus: m.breakdown.sessionBonus,
+            total: +m.breakdown.totalScore.toFixed(1),
+            hits: m.breakdown.tokenHits.map((h) => ({
+              token: h.token,
+              fields: h.fields,
+              idf: +h.idf.toFixed(2),
+              score: +h.contribution.toFixed(1)
+            }))
+          });
+          const entry = {
+            ts,
+            action: result.preamble ? "inject" : "skip",
+            prompt: promptText.replace(/\n/g, " "),
+            eligible: result.eligibleTokens,
+            session: sessionTokens,
+            ms: result.tookMs
+          };
+          if (result.matches.length > 0) {
+            entry.matches = result.matches.map(formatScored);
+          }
+          if (result.nearMisses.length > 0) {
+            entry.nearMisses = result.nearMisses.map(formatScored);
+          }
+          appendFileSync(MATCH_LOG, JSON.stringify(entry) + `
 `);
-      }
-      if (!result.preamble)
-        return;
-      const preamblePart = {
-        id: `prt_prompt-router-${Date.now()}`,
-        sessionID: input.sessionID,
-        messageID: input.messageID ?? "",
-        type: "text",
-        text: result.preamble + `
+        }
+        if (!result.preamble)
+          return;
+        const preamblePart = {
+          id: `prt_prompt-router-${Date.now()}`,
+          sessionID: input.sessionID,
+          messageID: input.messageID ?? "",
+          type: "text",
+          text: result.preamble + `
 
 `,
-        synthetic: !config.debug
-      };
-      output.parts.push(preamblePart);
+          synthetic: !config.debug
+        };
+        output.parts.push(preamblePart);
+      } catch (err) {
+        try {
+          const msg = err instanceof Error ? err.message : String(err);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error] ${msg}
+`);
+        } catch {}
+      }
     }
   };
 };
