@@ -590,6 +590,7 @@ var PromptRouter = async ({ directory, client }, options) => {
   const debug = opts.debug ?? !!process.env.PROMPT_ROUTER_DEBUG;
   const sessions = new Map;
   const seededSessions = new Set;
+  let lastSeenSessionID;
   const agentsMdPaths = [
     join2(directory, "AGENTS.md"),
     join2(directory, ".opencode", "AGENTS.md")
@@ -607,6 +608,7 @@ var PromptRouter = async ({ directory, client }, options) => {
         if (skillPaths.length === 0)
           return;
         const sessionID = input.sessionID;
+        lastSeenSessionID = sessionID;
         if (!sessions.has(sessionID)) {
           sessions.set(sessionID, createSessionContext());
         }
@@ -694,6 +696,93 @@ var PromptRouter = async ({ directory, client }, options) => {
         try {
           const msg = err instanceof Error ? err.message : String(err);
           appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error] ${msg}
+`);
+        } catch {}
+      }
+    },
+    "experimental.chat.messages.transform": async (_input, output) => {
+      try {
+        const messages = output.messages;
+        if (messages.length < 2)
+          return;
+        let lastAssistantIdx = -1;
+        for (let i = messages.length - 1;i >= 0; i--) {
+          if (messages[i].info.role === "assistant") {
+            lastAssistantIdx = i;
+            break;
+          }
+        }
+        if (lastAssistantIdx === -1)
+          return;
+        const assistantParts = messages[lastAssistantIdx].parts;
+        const assistantText = assistantParts.filter((p) => p.type === "text").map((p) => ("text" in p) ? p.text : "").join(" ");
+        if (!assistantText.trim())
+          return;
+        const textToScore = assistantText.slice(0, maxPromptLength);
+        const skillPaths = await resolveSkillPaths(directory);
+        if (skillPaths.length === 0)
+          return;
+        const sessionID = lastSeenSessionID;
+        if (!sessionID)
+          return;
+        if (!sessions.has(sessionID))
+          return;
+        const sessionCtx = sessions.get(sessionID);
+        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore };
+        const result = await route(textToScore, config, undefined, sessionCtx);
+        if (!result.preamble)
+          return;
+        recordTokens(sessionCtx, result.corpusRelevantTokens);
+        if (result.matches.length > 0) {
+          const skillTokens = result.matches.flatMap((m) => [
+            ...tokenize(m.skill.name),
+            ...tokenize((m.skill.tags ?? []).join(" "))
+          ]);
+          recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
+        }
+        let lastUserIdx = -1;
+        for (let i = messages.length - 1;i >= 0; i--) {
+          if (messages[i].info.role === "user") {
+            lastUserIdx = i;
+            break;
+          }
+        }
+        if (lastUserIdx === -1)
+          return;
+        const userParts = messages[lastUserIdx].parts;
+        const alreadyInjected = userParts.some((p) => p.type === "text" && ("text" in p) && p.text?.includes("Before responding, load these skills"));
+        if (alreadyInjected)
+          return;
+        const preamblePart = {
+          id: `prt_prompt-router-transform-${Date.now()}`,
+          sessionID,
+          messageID: "",
+          type: "text",
+          text: result.preamble + `
+
+`,
+          synthetic: true
+        };
+        messages[lastUserIdx].parts.push(preamblePart);
+        if (debug) {
+          const ts = new Date().toISOString();
+          const entry = {
+            ts,
+            action: "inject-transform",
+            assistantText: textToScore.replace(/\n/g, " ").slice(0, 200),
+            matches: result.matches.map((m) => ({
+              skill: m.skill.name,
+              total: +m.breakdown.totalScore.toFixed(1)
+            })),
+            ms: result.tookMs
+          };
+          appendFileSync(MATCH_LOG, JSON.stringify(entry) + `
+`);
+        }
+      } catch (err) {
+        try {
+          const msg = err instanceof Error ? err.message : String(err);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error:transform] ${msg}
 `);
         } catch {}
       }

@@ -67,6 +67,8 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
   const sessions = new Map<string, SessionContext>();
   // Track whether we've seeded a session with project tokens
   const seededSessions = new Set<string>();
+  // Track last seen session ID for the transform hook (which has no sessionID in input)
+  let lastSeenSessionID: string | undefined;
 
   // AGENTS.md locations to check for project context
   const agentsMdPaths = [
@@ -96,6 +98,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
       // Get or create session context
       const sessionID = input.sessionID;
+      lastSeenSessionID = sessionID;
       if (!sessions.has(sessionID)) {
         sessions.set(sessionID, createSessionContext());
       }
@@ -202,6 +205,112 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
           appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error] ${msg}\n`);
         } catch {
           // Even logging failed — swallow silently
+        }
+      }
+    },
+
+    "experimental.chat.messages.transform": async (_input, output) => {
+      try {
+        const messages = output.messages;
+        if (messages.length < 2) return;
+
+        // Find the last assistant message
+        let lastAssistantIdx = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if ((messages[i].info as any).role === "assistant") {
+            lastAssistantIdx = i;
+            break;
+          }
+        }
+        if (lastAssistantIdx === -1) return;
+
+        // Extract text from last assistant message
+        const assistantParts = messages[lastAssistantIdx].parts;
+        const assistantText = assistantParts
+          .filter((p) => p.type === "text")
+          .map((p) => ("text" in p ? (p as any).text : ""))
+          .join(" ");
+
+        if (!assistantText.trim()) return;
+        // Only score a manageable chunk of assistant text
+        const textToScore = assistantText.slice(0, maxPromptLength);
+
+        const skillPaths = await resolveSkillPaths(directory);
+        if (skillPaths.length === 0) return;
+
+        // Use a synthetic session ID for the transform hook
+        // (session context is shared with chat.message via the same map)
+        // We can't get sessionID from the transform hook input, so we use
+        // the most recently seen session
+        const sessionID = lastSeenSessionID;
+        if (!sessionID) return;
+
+        if (!sessions.has(sessionID)) return;
+        const sessionCtx = sessions.get(sessionID)!;
+
+        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore };
+        const result = await route(textToScore, config, undefined, sessionCtx);
+
+        if (!result.preamble) return;
+
+        // Record tokens from assistant message into session context
+        recordTokens(sessionCtx, result.corpusRelevantTokens);
+        if (result.matches.length > 0) {
+          const skillTokens = result.matches.flatMap((m) => [
+            ...tokenize(m.skill.name),
+            ...tokenize((m.skill.tags ?? []).join(" ")),
+          ]);
+          recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
+        }
+
+        // Find the last user message to inject into
+        let lastUserIdx = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if ((messages[i].info as any).role === "user") {
+            lastUserIdx = i;
+            break;
+          }
+        }
+        if (lastUserIdx === -1) return;
+
+        // Only inject if the last user message doesn't already have a router preamble
+        const userParts = messages[lastUserIdx].parts;
+        const alreadyInjected = userParts.some(
+          (p) => p.type === "text" && ("text" in p) && (p as any).text?.includes("Before responding, load these skills")
+        );
+        if (alreadyInjected) return;
+
+        // Inject preamble into the last user message
+        const preamblePart = {
+          id: `prt_prompt-router-transform-${Date.now()}`,
+          sessionID,
+          messageID: "",
+          type: "text" as const,
+          text: result.preamble + "\n\n",
+          synthetic: true,
+        };
+        messages[lastUserIdx].parts.push(preamblePart);
+
+        if (debug) {
+          const ts = new Date().toISOString();
+          const entry = {
+            ts,
+            action: "inject-transform",
+            assistantText: textToScore.replace(/\n/g, " ").slice(0, 200),
+            matches: result.matches.map((m) => ({
+              skill: m.skill.name,
+              total: +m.breakdown!.totalScore.toFixed(1),
+            })),
+            ms: result.tookMs,
+          };
+          appendFileSync(MATCH_LOG, JSON.stringify(entry) + "\n");
+        }
+      } catch (err) {
+        try {
+          const msg = err instanceof Error ? err.message : String(err);
+          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error:transform] ${msg}\n`);
+        } catch {
+          // swallow
         }
       }
     },
