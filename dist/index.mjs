@@ -198,7 +198,12 @@ function scoreSkill(prompt, skill, config, index) {
   const tagTokens = fieldTokenSet((skill.tags ?? []).join(" "));
   const hits = [];
   let hasHighSignalMatch = false;
+  const tokenCounts = new Map;
   for (const t of tokens) {
+    const count = tokenCounts.get(t) ?? 0;
+    if (count >= 2)
+      continue;
+    tokenCounts.set(t, count + 1);
     const idf = index ? index.idf(t) : 1;
     const inName = nameTokens.has(t);
     const inTags = tagTokens.has(t);

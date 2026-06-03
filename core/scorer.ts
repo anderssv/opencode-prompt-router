@@ -75,8 +75,14 @@ export function scoreSkill(
   // This prevents long vague prompts from accumulating noise.
   const hits: TokenHit[] = [];
   let hasHighSignalMatch = false;
+  const tokenCounts = new Map<string, number>();
 
   for (const t of tokens) {
+    // Cap each token at 2 contributions to prevent repetition inflation
+    const count = tokenCounts.get(t) ?? 0;
+    if (count >= 2) continue;
+    tokenCounts.set(t, count + 1);
+
     const idf = index ? index.idf(t) : 1;
 
     const inName = nameTokens.has(t);
