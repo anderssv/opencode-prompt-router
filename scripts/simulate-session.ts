@@ -35,12 +35,13 @@ const directory = process.argv[3] ?? session.directory;
 console.log(`\n=== Simulating session: ${session.title} ===`);
 console.log(`Directory: ${directory}\n`);
 
-// Get all message parts in order
+// Get only user message parts in order
 const parts = db.query(`
   SELECT m.time_created as msg_time, p.data 
   FROM message m 
   JOIN part p ON p.message_id = m.id 
   WHERE m.session_id = ?
+    AND json_extract(m.data, '$.role') = 'user'
   ORDER BY m.time_created ASC, p.time_created ASC
 `).all(sessionId) as any[];
 
