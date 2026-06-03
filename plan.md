@@ -31,3 +31,5 @@ Beyond skill loading, the plugin can reinforce project/session context in other 
 - **Norwegian/non-English prompts**: The English stemmer mangles Norwegian words (e.g. "befaring" → "befar", "nøyaktig" → "yaktig", "røttene" → "ttene"). Not currently causing FPs since mangled stems don't match skill tokens, but worth noting for future i18n support.
 
 - **Near-misses are mostly session-bonus-only**: Many near-miss entries show skills with stage1=0 and only a +5 session bonus. These are useful for debugging session affinity behavior but not for evaluating scoring quality. Consider tagging them differently in analysis (not in logging — keep full detail for debugging).
+
+- **Norwegian/multilingual stemming**: Snowball has a Norwegian stemmer, but the real gap is language mismatch — skills are English-named, so Norwegian stems won't match. Would only help with bilingual tags on skills or a dual-stemmer approach (run both English+Norwegian, expand match surface). Risk of cross-language stem collisions causing FPs. Low priority unless skills get Norwegian tags.
