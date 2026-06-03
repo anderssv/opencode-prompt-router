@@ -11,7 +11,7 @@ const SUPPRESSORS: string[] = [
   "check", "show", "run", "set", "get",
   "use", "update", "create", "give", "open",
   // Ambiguous nouns (common English meaning ≠ skill meaning)
-  "event", "events",
+  "type", "event", "events",
   "file", "files", "directory", "path",
   "test", "tests",
   "config", "configuration",

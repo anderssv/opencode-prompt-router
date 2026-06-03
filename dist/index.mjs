@@ -493,6 +493,7 @@ var SUPPRESSORS = [
   "create",
   "give",
   "open",
+  "type",
   "event",
   "events",
   "file",
