@@ -48,6 +48,8 @@ export interface ScoredSkill {
 
 export interface RouteResult {
   matches: ScoredSkill[];
+  /** Top near-misses: scored > 0 but below threshold */
+  nearMisses: ScoredSkill[];
   preamble: string;
   tookMs: number;
   /** Prompt tokens that exist in any skill's name or tags (useful for session recording) */

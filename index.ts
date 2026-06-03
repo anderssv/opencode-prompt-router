@@ -144,35 +144,40 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       }
 
       if (debug) {
-        if (result.preamble) {
-          const ts = new Date().toISOString();
-          const sessionTokens = Object.fromEntries(
-            [...getSessionWeights(sessionCtx).entries()]
-              .filter(([, w]) => w >= 0.3)
-              .map(([t, w]) => [t, +w.toFixed(1)])
-          );
-          const entry = {
-            ts,
-            prompt: promptText.replace(/\n/g, " "),
-            eligible: result.eligibleTokens,
-            session: sessionTokens,
-            matches: result.matches.map((m) => ({
-              skill: m.skill.name,
-              stage1: +m.breakdown!.stage1Score.toFixed(1),
-              stage2: +m.breakdown!.stage2Bonus.toFixed(1),
-              sessionBonus: m.breakdown!.sessionBonus,
-              total: +m.breakdown!.totalScore.toFixed(1),
-              hits: m.breakdown!.tokenHits.map((h) => ({
-                token: h.token,
-                fields: h.fields,
-                idf: +h.idf.toFixed(2),
-                score: +h.contribution.toFixed(1),
-              })),
-            })),
-            ms: result.tookMs,
-          };
-          appendFileSync(MATCH_LOG, JSON.stringify(entry) + "\n");
+        const ts = new Date().toISOString();
+        const sessionTokens = Object.fromEntries(
+          [...getSessionWeights(sessionCtx).entries()]
+            .filter(([, w]) => w >= 0.3)
+            .map(([t, w]) => [t, +w.toFixed(1)])
+        );
+        const formatScored = (m: typeof result.matches[0]) => ({
+          skill: m.skill.name,
+          stage1: +m.breakdown!.stage1Score.toFixed(1),
+          stage2: +m.breakdown!.stage2Bonus.toFixed(1),
+          sessionBonus: m.breakdown!.sessionBonus,
+          total: +m.breakdown!.totalScore.toFixed(1),
+          hits: m.breakdown!.tokenHits.map((h) => ({
+            token: h.token,
+            fields: h.fields,
+            idf: +h.idf.toFixed(2),
+            score: +h.contribution.toFixed(1),
+          })),
+        });
+        const entry: Record<string, unknown> = {
+          ts,
+          action: result.preamble ? "inject" : "skip",
+          prompt: promptText.replace(/\n/g, " "),
+          eligible: result.eligibleTokens,
+          session: sessionTokens,
+          ms: result.tookMs,
+        };
+        if (result.matches.length > 0) {
+          entry.matches = result.matches.map(formatScored);
         }
+        if (result.nearMisses.length > 0) {
+          entry.nearMisses = result.nearMisses.map(formatScored);
+        }
+        appendFileSync(MATCH_LOG, JSON.stringify(entry) + "\n");
       }
 
       if (!result.preamble) return;

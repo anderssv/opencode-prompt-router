@@ -117,6 +117,12 @@ export async function route(
     .sort((a, b) => b.score - a.score)
     .slice(0, config.topN);
 
+  // Near-misses: scored > 0 but below threshold (top 3)
+  const nearMisses = scored
+    .filter(({ skill, score }) => score > 0 && score < config.minScore && !excludeSet.has(skill.name))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
   const tookMs = Date.now() - start;
 
   // Compute corpus-relevant tokens: prompt tokens that appear in any skill's name/tags
@@ -135,6 +141,7 @@ export async function route(
 
   return {
     matches,
+    nearMisses,
     preamble: formatPreamble(matches),
     tookMs,
     corpusRelevantTokens,
