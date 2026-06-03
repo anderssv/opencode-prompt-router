@@ -313,7 +313,10 @@ function createSessionContext() {
     tokens: new Map,
     matchedSkills: new Set,
     pinnedTokens: new Set,
-    messageCount: 0
+    messageCount: 0,
+    turnInjectedSkills: new Set,
+    lastScoredHash: "",
+    lastInjectionAt: 0
   };
 }
 function recordTokens(ctx, tokens) {
@@ -638,6 +641,7 @@ var PromptRouter = async ({ directory, client }, options) => {
           }
         }
         const result = await route(promptText, config, log, sessionCtx);
+        sessionCtx.turnInjectedSkills.clear();
         recordTokens(sessionCtx, result.corpusRelevantTokens);
         if (result.matches.length > 0) {
           const skillTokens = result.matches.flatMap((m) => [
@@ -645,6 +649,10 @@ var PromptRouter = async ({ directory, client }, options) => {
             ...tokenize((m.skill.tags ?? []).join(" "))
           ]);
           recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
+          for (const m of result.matches) {
+            sessionCtx.turnInjectedSkills.add(m.skill.name);
+          }
+          sessionCtx.lastInjectionAt = sessionCtx.messageCount;
         }
         if (debug) {
           const ts = new Date().toISOString();
@@ -705,6 +713,12 @@ var PromptRouter = async ({ directory, client }, options) => {
         const messages = output.messages;
         if (messages.length < 2)
           return;
+        const sessionID = lastSeenSessionID;
+        if (!sessionID)
+          return;
+        if (!sessions.has(sessionID))
+          return;
+        const sessionCtx = sessions.get(sessionID);
         let lastAssistantIdx = -1;
         for (let i = messages.length - 1;i >= 0; i--) {
           if (messages[i].info.role === "assistant") {
@@ -719,27 +733,31 @@ var PromptRouter = async ({ directory, client }, options) => {
         if (!assistantText.trim())
           return;
         const textToScore = assistantText.slice(0, maxPromptLength);
+        const textHash = textToScore.slice(0, 100);
+        if (sessionCtx.lastScoredHash === textHash)
+          return;
+        sessionCtx.lastScoredHash = textHash;
         const skillPaths = await resolveSkillPaths(directory);
         if (skillPaths.length === 0)
           return;
-        const sessionID = lastSeenSessionID;
-        if (!sessionID)
-          return;
-        if (!sessions.has(sessionID))
-          return;
-        const sessionCtx = sessions.get(sessionID);
-        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore };
+        const transformMinScore = Math.round(minScore * 1.5);
+        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore };
         const result = await route(textToScore, config, undefined, sessionCtx);
         if (!result.preamble)
           return;
+        const newMatches = result.matches.filter((m) => !sessionCtx.turnInjectedSkills.has(m.skill.name));
+        if (newMatches.length === 0)
+          return;
         recordTokens(sessionCtx, result.corpusRelevantTokens);
-        if (result.matches.length > 0) {
-          const skillTokens = result.matches.flatMap((m) => [
-            ...tokenize(m.skill.name),
-            ...tokenize((m.skill.tags ?? []).join(" "))
-          ]);
-          recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
+        const skillTokens = newMatches.flatMap((m) => [
+          ...tokenize(m.skill.name),
+          ...tokenize((m.skill.tags ?? []).join(" "))
+        ]);
+        recordMatches(sessionCtx, newMatches.map((m) => m.skill.name), skillTokens);
+        for (const m of newMatches) {
+          sessionCtx.turnInjectedSkills.add(m.skill.name);
         }
+        sessionCtx.lastInjectionAt = sessionCtx.messageCount;
         let lastUserIdx = -1;
         for (let i = messages.length - 1;i >= 0; i--) {
           if (messages[i].info.role === "user") {
@@ -753,12 +771,21 @@ var PromptRouter = async ({ directory, client }, options) => {
         const alreadyInjected = userParts.some((p) => p.type === "text" && ("text" in p) && p.text?.includes("Before responding, load these skills"));
         if (alreadyInjected)
           return;
+        const names = newMatches.map(({ skill }) => skill.name).join(", ");
+        const lines = newMatches.map(({ skill }) => {
+          const desc = skill.description.slice(0, 120);
+          return `- ${skill.name}: ${desc}`;
+        });
+        const preamble = `Before responding, load these skills using the skill tool: ${names}
+
+${lines.join(`
+`)}`;
         const preamblePart = {
           id: `prt_prompt-router-transform-${Date.now()}`,
           sessionID,
           messageID: "",
           type: "text",
-          text: result.preamble + `
+          text: preamble + `
 
 `,
           synthetic: true
@@ -770,7 +797,7 @@ var PromptRouter = async ({ directory, client }, options) => {
             ts,
             action: "inject-transform",
             assistantText: textToScore.replace(/\n/g, " ").slice(0, 200),
-            matches: result.matches.map((m) => ({
+            matches: newMatches.map((m) => ({
               skill: m.skill.name,
               total: +m.breakdown.totalScore.toFixed(1)
             })),

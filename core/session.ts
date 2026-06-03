@@ -14,6 +14,12 @@ export interface SessionContext {
   /** Tokens from matched skills that never decay */
   pinnedTokens: Set<string>;
   messageCount: number;
+  /** Skills injected in the most recent user turn (cleared each new user message) */
+  turnInjectedSkills: Set<string>;
+  /** Hash of last assistant text scored by transform hook (avoid re-scoring) */
+  lastScoredHash: string;
+  /** messageCount at last injection (for cooldown) */
+  lastInjectionAt: number;
 }
 
 export function createSessionContext(): SessionContext {
@@ -22,6 +28,9 @@ export function createSessionContext(): SessionContext {
     matchedSkills: new Set(),
     pinnedTokens: new Set(),
     messageCount: 0,
+    turnInjectedSkills: new Set(),
+    lastScoredHash: "",
+    lastInjectionAt: 0,
   };
 }
 

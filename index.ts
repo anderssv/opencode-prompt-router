@@ -136,6 +136,9 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
       const result = await route(promptText, config, log, sessionCtx);
 
+      // Clear turn state for new user message
+      sessionCtx.turnInjectedSkills.clear();
+
       // Record only corpus-relevant tokens (those in skill name/tags) into session
       recordTokens(sessionCtx, result.corpusRelevantTokens);
       if (result.matches.length > 0) {
@@ -145,6 +148,11 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
           ...tokenize((m.skill.tags ?? []).join(" ")),
         ]);
         recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
+        // Track what we injected this turn
+        for (const m of result.matches) {
+          sessionCtx.turnInjectedSkills.add(m.skill.name);
+        }
+        sessionCtx.lastInjectionAt = sessionCtx.messageCount;
       }
 
       if (debug) {
@@ -214,6 +222,12 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
         const messages = output.messages;
         if (messages.length < 2) return;
 
+        // Need session context
+        const sessionID = lastSeenSessionID;
+        if (!sessionID) return;
+        if (!sessions.has(sessionID)) return;
+        const sessionCtx = sessions.get(sessionID)!;
+
         // Find the last assistant message
         let lastAssistantIdx = -1;
         for (let i = messages.length - 1; i >= 0; i--) {
@@ -232,36 +246,40 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
           .join(" ");
 
         if (!assistantText.trim()) return;
-        // Only score a manageable chunk of assistant text
         const textToScore = assistantText.slice(0, maxPromptLength);
+
+        // Skip if we already scored this exact text (tool loop re-entry)
+        const textHash = textToScore.slice(0, 100);
+        if (sessionCtx.lastScoredHash === textHash) return;
+        sessionCtx.lastScoredHash = textHash;
 
         const skillPaths = await resolveSkillPaths(directory);
         if (skillPaths.length === 0) return;
 
-        // Use a synthetic session ID for the transform hook
-        // (session context is shared with chat.message via the same map)
-        // We can't get sessionID from the transform hook input, so we use
-        // the most recently seen session
-        const sessionID = lastSeenSessionID;
-        if (!sessionID) return;
-
-        if (!sessions.has(sessionID)) return;
-        const sessionCtx = sessions.get(sessionID)!;
-
-        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore };
+        // Higher threshold for assistant text (noisier)
+        const transformMinScore = Math.round(minScore * 1.5);
+        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore };
         const result = await route(textToScore, config, undefined, sessionCtx);
 
         if (!result.preamble) return;
 
+        // Filter out skills already injected this turn by chat.message
+        const newMatches = result.matches.filter(
+          (m) => !sessionCtx.turnInjectedSkills.has(m.skill.name)
+        );
+        if (newMatches.length === 0) return;
+
         // Record tokens from assistant message into session context
         recordTokens(sessionCtx, result.corpusRelevantTokens);
-        if (result.matches.length > 0) {
-          const skillTokens = result.matches.flatMap((m) => [
-            ...tokenize(m.skill.name),
-            ...tokenize((m.skill.tags ?? []).join(" ")),
-          ]);
-          recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
+        const skillTokens = newMatches.flatMap((m) => [
+          ...tokenize(m.skill.name),
+          ...tokenize((m.skill.tags ?? []).join(" ")),
+        ]);
+        recordMatches(sessionCtx, newMatches.map((m) => m.skill.name), skillTokens);
+        for (const m of newMatches) {
+          sessionCtx.turnInjectedSkills.add(m.skill.name);
         }
+        sessionCtx.lastInjectionAt = sessionCtx.messageCount;
 
         // Find the last user message to inject into
         let lastUserIdx = -1;
@@ -280,13 +298,21 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
         );
         if (alreadyInjected) return;
 
+        // Build preamble from new matches only
+        const names = newMatches.map(({ skill }) => skill.name).join(", ");
+        const lines = newMatches.map(({ skill }) => {
+          const desc = skill.description.slice(0, 120);
+          return `- ${skill.name}: ${desc}`;
+        });
+        const preamble = `Before responding, load these skills using the skill tool: ${names}\n\n${lines.join("\n")}`;
+
         // Inject preamble into the last user message
         const preamblePart = {
           id: `prt_prompt-router-transform-${Date.now()}`,
           sessionID,
           messageID: "",
           type: "text" as const,
-          text: result.preamble + "\n\n",
+          text: preamble + "\n\n",
           synthetic: true,
         };
         messages[lastUserIdx].parts.push(preamblePart);
@@ -297,7 +323,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
             ts,
             action: "inject-transform",
             assistantText: textToScore.replace(/\n/g, " ").slice(0, 200),
-            matches: result.matches.map((m) => ({
+            matches: newMatches.map((m) => ({
               skill: m.skill.name,
               total: +m.breakdown!.totalScore.toFixed(1),
             })),
