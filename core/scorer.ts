@@ -1,4 +1,4 @@
-import type { Skill, RouterConfig } from "./types";
+import type { Skill, RouterConfig, TokenHit } from "./types";
 import type { CorpusIndex } from "./corpus";
 import { tokenize } from "./tokenizer";
 
@@ -53,12 +53,17 @@ export function scoreStage2(
   return bonus;
 }
 
+export interface ScoreSkillResult {
+  score: number;
+  tokenHits: TokenHit[];
+}
+
 export function scoreSkill(
   prompt: string,
   skill: Skill,
   config: RouterConfig,
   index?: CorpusIndex,
-): number {
+): ScoreSkillResult {
   const { weights } = config;
   const tokens = eligibleTokens(prompt, config, index);
 
@@ -68,7 +73,7 @@ export function scoreSkill(
 
   // Collect per-token contributions, then keep only top N.
   // This prevents long vague prompts from accumulating noise.
-  const contributions: number[] = [];
+  const hits: TokenHit[] = [];
   let hasHighSignalMatch = false;
 
   for (const t of tokens) {
@@ -81,33 +86,27 @@ export function scoreSkill(
     if (inName || inTags) hasHighSignalMatch = true;
 
     let tokenScore = 0;
-    if (inName) tokenScore += weights.name * idf;
-    if (inTags) tokenScore += weights.tags * idf;
-    if (inDesc) tokenScore += weights.description * idf;
+    const fields: TokenHit["fields"] = [];
+    if (inName) { tokenScore += weights.name * idf; fields.push("name"); }
+    if (inTags) { tokenScore += weights.tags * idf; fields.push("tags"); }
+    if (inDesc) { tokenScore += weights.description * idf; fields.push("description"); }
 
-    if (tokenScore > 0) contributions.push(tokenScore);
+    if (tokenScore > 0) hits.push({ token: t, fields, idf, contribution: tokenScore });
   }
 
-  // Description-only matches are too noisy — generic words like "cli" or
-  // "data" appear in many descriptions. Require at least one token to hit
-  // a high-signal field (name or tags) before counting.
-  if (!hasHighSignalMatch) return 0;
+  if (!hasHighSignalMatch) return { score: 0, tokenHits: [] };
 
-  // Require a minimum number of distinct matching tokens to avoid
-  // single-token false positives from long vague prompts (e.g. "cli" alone
-  // surfacing playwright-cli). Short prompts with few eligible tokens are
-  // exempt — they're likely targeted.
   const minTokens = config.minMatchingTokens ?? 1;
   const eligibleCount = new Set(tokens).size;
-  if (eligibleCount >= 5 && contributions.length < minTokens) return 0;
+  if (eligibleCount >= 5 && hits.length < minTokens) return { score: 0, tokenHits: [] };
 
   // Sort descending and sum only top N contributions
-  contributions.sort((a, b) => b - a);
-  const topN = config.maxMatchingTokens ?? contributions.length;
+  hits.sort((a, b) => b.contribution - a.contribution);
+  const topN = config.maxMatchingTokens ?? hits.length;
   let score = 0;
-  for (let i = 0; i < Math.min(topN, contributions.length); i++) {
-    score += contributions[i];
+  for (let i = 0; i < Math.min(topN, hits.length); i++) {
+    score += hits[i].contribution;
   }
 
-  return score;
+  return { score, tokenHits: hits.slice(0, topN) };
 }

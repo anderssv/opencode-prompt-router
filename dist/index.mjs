@@ -196,7 +196,7 @@ function scoreSkill(prompt, skill, config, index) {
   const nameTokens = fieldTokenSet(skill.name);
   const descTokens = fieldTokenSet(skill.description);
   const tagTokens = fieldTokenSet((skill.tags ?? []).join(" "));
-  const contributions = [];
+  const hits = [];
   let hasHighSignalMatch = false;
   for (const t of tokens) {
     const idf = index ? index.idf(t) : 1;
@@ -206,28 +206,35 @@ function scoreSkill(prompt, skill, config, index) {
     if (inName || inTags)
       hasHighSignalMatch = true;
     let tokenScore = 0;
-    if (inName)
+    const fields = [];
+    if (inName) {
       tokenScore += weights.name * idf;
-    if (inTags)
+      fields.push("name");
+    }
+    if (inTags) {
       tokenScore += weights.tags * idf;
-    if (inDesc)
+      fields.push("tags");
+    }
+    if (inDesc) {
       tokenScore += weights.description * idf;
+      fields.push("description");
+    }
     if (tokenScore > 0)
-      contributions.push(tokenScore);
+      hits.push({ token: t, fields, idf, contribution: tokenScore });
   }
   if (!hasHighSignalMatch)
-    return 0;
+    return { score: 0, tokenHits: [] };
   const minTokens = config.minMatchingTokens ?? 1;
   const eligibleCount = new Set(tokens).size;
-  if (eligibleCount >= 5 && contributions.length < minTokens)
-    return 0;
-  contributions.sort((a, b) => b - a);
-  const topN = config.maxMatchingTokens ?? contributions.length;
+  if (eligibleCount >= 5 && hits.length < minTokens)
+    return { score: 0, tokenHits: [] };
+  hits.sort((a, b) => b.contribution - a.contribution);
+  const topN = config.maxMatchingTokens ?? hits.length;
   let score = 0;
-  for (let i = 0;i < Math.min(topN, contributions.length); i++) {
-    score += contributions[i];
+  for (let i = 0;i < Math.min(topN, hits.length); i++) {
+    score += hits[i].contribution;
   }
-  return score;
+  return { score, tokenHits: hits.slice(0, topN) };
 }
 
 // core/corpus.ts
@@ -404,11 +411,19 @@ async function route(prompt, config, log, sessionCtx) {
   }
   const sessionWeights = sessionCtx && sessionCtx.messageCount > 0 ? getSessionWeights(sessionCtx) : new Map;
   const scored = skills.map((skill) => {
-    const score = scoreSkill(prompt, skill, config, index);
-    const nearThreshold = score >= config.minScore && score <= config.minScore * STAGE2_WINDOW_FACTOR;
-    const bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
+    const result = scoreSkill(prompt, skill, config, index);
+    const nearThreshold = result.score >= config.minScore && result.score <= config.minScore * STAGE2_WINDOW_FACTOR;
+    const stage2Bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
     const sessBonus = sessionBonus(skill, sessionWeights);
-    return { skill, score: score + bonus + sessBonus };
+    const totalScore = result.score + stage2Bonus + sessBonus;
+    const breakdown = {
+      tokenHits: result.tokenHits,
+      stage1Score: result.score,
+      stage2Bonus,
+      sessionBonus: sessBonus,
+      totalScore
+    };
+    return { skill, score: totalScore, breakdown };
   });
   const excludeSet = new Set(config.excludeSkills ?? []);
   const matches = scored.filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name)).sort((a, b) => b.score - a.score).slice(0, config.topN);
@@ -430,7 +445,8 @@ async function route(prompt, config, log, sessionCtx) {
     matches,
     preamble: formatPreamble(matches),
     tookMs,
-    corpusRelevantTokens
+    corpusRelevantTokens,
+    eligibleTokens: promptTokens
   };
 }
 async function extractProjectTokens(text, config) {
@@ -621,14 +637,22 @@ var PromptRouter = async ({ directory, client }, options) => {
       }
       if (debug) {
         if (result.preamble) {
+          const ts = new Date().toISOString();
           const sessionTokens = [...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => `${t}(${w.toFixed(1)})`).join(", ") || "(none)";
-          const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ");
           const prompt = promptText.replace(/\n/g, " ");
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}
+          appendFileSync(MATCH_LOG, `${ts} [session] tokens: ${sessionTokens}
 `);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  \u2192  ${matches}  (${result.tookMs}ms)
+          appendFileSync(MATCH_LOG, `${ts} [prompt] ${prompt}
 `);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}
+          appendFileSync(MATCH_LOG, `${ts} [eligible] ${result.eligibleTokens.join(", ")}
+`);
+          for (const m of result.matches) {
+            const bd = m.breakdown;
+            const hits = bd.tokenHits.map((h) => `${h.token}[${h.fields.join("+")}]*${h.idf.toFixed(2)}=${h.contribution.toFixed(1)}`).join(", ");
+            appendFileSync(MATCH_LOG, `${ts} [score] ${m.skill.name}: stage1=${bd.stage1Score.toFixed(1)} stage2=${bd.stage2Bonus.toFixed(1)} session=${bd.sessionBonus} total=${bd.totalScore.toFixed(1)} | ${hits}
+`);
+          }
+          appendFileSync(MATCH_LOG, `${ts} [inject] ${result.matches.map((m) => m.skill.name).join(", ")} (${result.tookMs}ms)
 `);
         }
       }

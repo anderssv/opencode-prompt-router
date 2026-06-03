@@ -25,9 +25,25 @@ export interface RouterConfig {
   excludeSkills?: string[];
 }
 
+export interface TokenHit {
+  token: string;
+  fields: ("name" | "tags" | "description")[];
+  idf: number;
+  contribution: number;
+}
+
+export interface ScoreBreakdown {
+  tokenHits: TokenHit[];
+  stage1Score: number;
+  stage2Bonus: number;
+  sessionBonus: number;
+  totalScore: number;
+}
+
 export interface ScoredSkill {
   skill: Skill;
   score: number;
+  breakdown?: ScoreBreakdown;
 }
 
 export interface RouteResult {
@@ -36,4 +52,6 @@ export interface RouteResult {
   tookMs: number;
   /** Prompt tokens that exist in any skill's name or tags (useful for session recording) */
   corpusRelevantTokens: string[];
+  /** All eligible prompt tokens (for logging) */
+  eligibleTokens: string[];
 }

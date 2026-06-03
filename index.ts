@@ -145,15 +145,23 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
       if (debug) {
         if (result.preamble) {
+          const ts = new Date().toISOString();
           const sessionTokens = [...getSessionWeights(sessionCtx).entries()]
             .filter(([, w]) => w >= 0.3)
             .map(([t, w]) => `${t}(${w.toFixed(1)})`)
             .join(", ") || "(none)";
-          const matches = result.matches.map((m) => `${m.skill.name}(${m.score.toFixed(1)})`).join(", ");
           const prompt = promptText.replace(/\n/g, " ");
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [session] tokens: ${sessionTokens}\n`);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [match] ${prompt}  →  ${matches}  (${result.tookMs}ms)\n`);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [inject] ${result.matches.map((m) => m.skill.name).join(", ")}\n`);
+          appendFileSync(MATCH_LOG, `${ts} [session] tokens: ${sessionTokens}\n`);
+          appendFileSync(MATCH_LOG, `${ts} [prompt] ${prompt}\n`);
+          appendFileSync(MATCH_LOG, `${ts} [eligible] ${result.eligibleTokens.join(", ")}\n`);
+          for (const m of result.matches) {
+            const bd = m.breakdown!;
+            const hits = bd.tokenHits.map((h) =>
+              `${h.token}[${h.fields.join("+")}]*${h.idf.toFixed(2)}=${h.contribution.toFixed(1)}`
+            ).join(", ");
+            appendFileSync(MATCH_LOG, `${ts} [score] ${m.skill.name}: stage1=${bd.stage1Score.toFixed(1)} stage2=${bd.stage2Bonus.toFixed(1)} session=${bd.sessionBonus} total=${bd.totalScore.toFixed(1)} | ${hits}\n`);
+          }
+          appendFileSync(MATCH_LOG, `${ts} [inject] ${result.matches.map((m) => m.skill.name).join(", ")} (${result.tookMs}ms)\n`);
         }
       }
 

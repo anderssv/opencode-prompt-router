@@ -22,7 +22,7 @@ describe("scoreSkill", () => {
   test("returns 0 when no prompt tokens match the skill", () => {
     const skill = makeSkill({ name: "refactoring", description: "Improve code structure." });
 
-    const score = scoreSkill("please help me with xyz unknown topic", skill, UNIT_CONFIG);
+    const score = scoreSkill("please help me with xyz unknown topic", skill, UNIT_CONFIG).score;
 
     expect(score).toBe(0);
   });
@@ -31,7 +31,7 @@ describe("scoreSkill", () => {
     // "refactor" in prompt; skill name "refactoring" stems to "refactor" → match
     const skill = makeSkill({ name: "refactoring", description: "Something unrelated." });
 
-    const score = scoreSkill("refactor this class", skill, UNIT_CONFIG);
+    const score = scoreSkill("refactor this class", skill, UNIT_CONFIG).score;
 
     // weight.name=3, one token match
     expect(score).toBe(3);
@@ -40,7 +40,7 @@ describe("scoreSkill", () => {
   test("description-only match returns 0 (requires high-signal field)", () => {
     const skill = makeSkill({ name: "unrelated", description: "Terraform infrastructure deployment." });
 
-    const score = scoreSkill("deploy terraform", skill, UNIT_CONFIG);
+    const score = scoreSkill("deploy terraform", skill, UNIT_CONFIG).score;
 
     // No name/tag match → description-only → 0
     expect(score).toBe(0);
@@ -49,7 +49,7 @@ describe("scoreSkill", () => {
   test("description match contributes when name also matches", () => {
     const skill = makeSkill({ name: "terraform-infra", description: "Terraform infrastructure deployment." });
 
-    const score = scoreSkill("terraform deploy", skill, UNIT_CONFIG);
+    const score = scoreSkill("terraform deploy", skill, UNIT_CONFIG).score;
 
     // "terraform" hits name (3) + description (1) = 4
     expect(score).toBe(4);
@@ -62,7 +62,7 @@ describe("scoreSkill", () => {
       tags: ["terraform", "infra"],
     });
 
-    const score = scoreSkill("terraform plan", skill, UNIT_CONFIG);
+    const score = scoreSkill("terraform plan", skill, UNIT_CONFIG).score;
 
     // weight.tags=2, one token match "terraform"
     expect(score).toBe(2);
@@ -75,7 +75,7 @@ describe("scoreSkill", () => {
       tags: ["tdd", "kotlin"],
     });
 
-    const score = scoreSkill("kotlin tdd", skill, UNIT_CONFIG);
+    const score = scoreSkill("kotlin tdd", skill, UNIT_CONFIG).score;
 
     // "kotlin": name(3) + tags(2) + description(1) = 6
     // "tdd": name(3) + tags(2) + description(1) = 6
@@ -87,7 +87,7 @@ describe("scoreSkill", () => {
     // "build" is in the suppressors list
     const skill = makeSkill({ name: "build", description: "Something." });
 
-    const score = scoreSkill("build this project", skill, UNIT_CONFIG);
+    const score = scoreSkill("build this project", skill, UNIT_CONFIG).score;
 
     // "build" is suppressed → contributes 0
     expect(score).toBe(0);
@@ -105,8 +105,8 @@ describe("scoreSkill with corpus index", () => {
     const index = buildCorpusIndex(skills);
     const skill = skills[0];
 
-    const rareScore = scoreSkill("terraform", skill, UNIT_CONFIG, index);
-    const commonScore = scoreSkill("infra", skill, UNIT_CONFIG, index);
+    const rareScore = scoreSkill("terraform", skill, UNIT_CONFIG, index).score;
+    const commonScore = scoreSkill("infra", skill, UNIT_CONFIG, index).score;
 
     // With IDF, terraform (df=1) > infra (df=3) for same fields
     expect(rareScore).toBeGreaterThan(commonScore);
@@ -119,8 +119,8 @@ describe("scoreSkill with corpus index", () => {
     ];
     const index = buildCorpusIndex(skills);
 
-    const nameMatch = scoreSkill("terraform", skills[0], UNIT_CONFIG, index);
-    const descMatch = scoreSkill("terraform", makeSkill({ name: "unrelated", description: "Use terraform for infra." }), UNIT_CONFIG, index);
+    const nameMatch = scoreSkill("terraform", skills[0], UNIT_CONFIG, index).score;
+    const descMatch = scoreSkill("terraform", makeSkill({ name: "unrelated", description: "Use terraform for infra." }), UNIT_CONFIG, index).score;
 
     expect(nameMatch).toBeGreaterThan(descMatch);
   });
@@ -128,7 +128,7 @@ describe("scoreSkill with corpus index", () => {
   test("without index falls back to fixed-weight behaviour", () => {
     const skill = makeSkill({ name: "refactoring", description: "Something unrelated." });
 
-    const score = scoreSkill("refactor", skill, UNIT_CONFIG);
+    const score = scoreSkill("refactor", skill, UNIT_CONFIG).score;
 
     expect(score).toBe(3); // name weight only, no IDF, single token → no normalisation effect
   });

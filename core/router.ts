@@ -1,4 +1,4 @@
-import type { RouterConfig, RouteResult } from "./types";
+import type { RouterConfig, RouteResult, ScoreBreakdown } from "./types";
 import { SkillCache } from "./cache";
 import { discoverSkills } from "./discovery";
 import { scoreSkill, scoreStage2, eligibleTokens } from "./scorer";
@@ -87,17 +87,27 @@ export async function route(
     : new Map<string, number>();
 
   const scored = skills.map((skill) => {
-    const score = scoreSkill(prompt, skill, config, index);
+    const result = scoreSkill(prompt, skill, config, index);
 
     // Stage 2: run for skills near the scoring threshold
     const nearThreshold =
-      score >= config.minScore && score <= config.minScore * STAGE2_WINDOW_FACTOR;
-    const bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
+      result.score >= config.minScore && result.score <= config.minScore * STAGE2_WINDOW_FACTOR;
+    const stage2Bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
 
     // Session affinity: flat bonus if skill name/tags overlap with session context
     const sessBonus = sessionBonus(skill, sessionWeights);
 
-    return { skill, score: score + bonus + sessBonus };
+    const totalScore = result.score + stage2Bonus + sessBonus;
+
+    const breakdown: ScoreBreakdown = {
+      tokenHits: result.tokenHits,
+      stage1Score: result.score,
+      stage2Bonus,
+      sessionBonus: sessBonus,
+      totalScore,
+    };
+
+    return { skill, score: totalScore, breakdown };
   });
 
   const excludeSet = new Set(config.excludeSkills ?? []);
@@ -128,6 +138,7 @@ export async function route(
     preamble: formatPreamble(matches),
     tookMs,
     corpusRelevantTokens,
+    eligibleTokens: promptTokens,
   };
 }
 
