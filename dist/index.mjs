@@ -638,21 +638,28 @@ var PromptRouter = async ({ directory, client }, options) => {
       if (debug) {
         if (result.preamble) {
           const ts = new Date().toISOString();
-          const sessionTokens = [...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => `${t}(${w.toFixed(1)})`).join(", ") || "(none)";
-          const prompt = promptText.replace(/\n/g, " ");
-          appendFileSync(MATCH_LOG, `${ts} [session] tokens: ${sessionTokens}
-`);
-          appendFileSync(MATCH_LOG, `${ts} [prompt] ${prompt}
-`);
-          appendFileSync(MATCH_LOG, `${ts} [eligible] ${result.eligibleTokens.join(", ")}
-`);
-          for (const m of result.matches) {
-            const bd = m.breakdown;
-            const hits = bd.tokenHits.map((h) => `${h.token}[${h.fields.join("+")}]*${h.idf.toFixed(2)}=${h.contribution.toFixed(1)}`).join(", ");
-            appendFileSync(MATCH_LOG, `${ts} [score] ${m.skill.name}: stage1=${bd.stage1Score.toFixed(1)} stage2=${bd.stage2Bonus.toFixed(1)} session=${bd.sessionBonus} total=${bd.totalScore.toFixed(1)} | ${hits}
-`);
-          }
-          appendFileSync(MATCH_LOG, `${ts} [inject] ${result.matches.map((m) => m.skill.name).join(", ")} (${result.tookMs}ms)
+          const sessionTokens = Object.fromEntries([...getSessionWeights(sessionCtx).entries()].filter(([, w]) => w >= 0.3).map(([t, w]) => [t, +w.toFixed(1)]));
+          const entry = {
+            ts,
+            prompt: promptText.replace(/\n/g, " "),
+            eligible: result.eligibleTokens,
+            session: sessionTokens,
+            matches: result.matches.map((m) => ({
+              skill: m.skill.name,
+              stage1: +m.breakdown.stage1Score.toFixed(1),
+              stage2: +m.breakdown.stage2Bonus.toFixed(1),
+              sessionBonus: m.breakdown.sessionBonus,
+              total: +m.breakdown.totalScore.toFixed(1),
+              hits: m.breakdown.tokenHits.map((h) => ({
+                token: h.token,
+                fields: h.fields,
+                idf: +h.idf.toFixed(2),
+                score: +h.contribution.toFixed(1)
+              }))
+            })),
+            ms: result.tookMs
+          };
+          appendFileSync(MATCH_LOG, JSON.stringify(entry) + `
 `);
         }
       }
