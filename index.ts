@@ -124,7 +124,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
                 }
               }
               if (debug) {
-                appendFileSync(MATCH_LOG, `${new Date().toISOString()} [project] seeded from ${agentsPath}: ${capped.join(", ")}\n`);
+                appendFileSync(MATCH_LOG, JSON.stringify({ ts: new Date().toISOString(), action: "seed", source: agentsPath, tokens: capped }) + "\n");
               }
             }
             break; // Use first AGENTS.md found
@@ -210,7 +210,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
         // Never let the plugin crash the host session
         try {
           const msg = err instanceof Error ? err.message : String(err);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error] ${msg}\n`);
+          appendFileSync(MATCH_LOG, JSON.stringify({ ts: new Date().toISOString(), action: "error", hook: "chat.message", message: msg }) + "\n");
         } catch {
           // Even logging failed — swallow silently
         }
@@ -334,7 +334,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       } catch (err) {
         try {
           const msg = err instanceof Error ? err.message : String(err);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error:transform] ${msg}\n`);
+          appendFileSync(MATCH_LOG, JSON.stringify({ ts: new Date().toISOString(), action: "error", hook: "transform", message: msg }) + "\n");
         } catch {
           // swallow
         }

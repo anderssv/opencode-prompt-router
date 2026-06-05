@@ -632,7 +632,7 @@ var PromptRouter = async ({ directory, client }, options) => {
                   }
                 }
                 if (debug) {
-                  appendFileSync(MATCH_LOG, `${new Date().toISOString()} [project] seeded from ${agentsPath}: ${capped.join(", ")}
+                  appendFileSync(MATCH_LOG, JSON.stringify({ ts: new Date().toISOString(), action: "seed", source: agentsPath, tokens: capped }) + `
 `);
                 }
               }
@@ -703,7 +703,7 @@ var PromptRouter = async ({ directory, client }, options) => {
       } catch (err) {
         try {
           const msg = err instanceof Error ? err.message : String(err);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error] ${msg}
+          appendFileSync(MATCH_LOG, JSON.stringify({ ts: new Date().toISOString(), action: "error", hook: "chat.message", message: msg }) + `
 `);
         } catch {}
       }
@@ -809,7 +809,7 @@ ${lines.join(`
       } catch (err) {
         try {
           const msg = err instanceof Error ? err.message : String(err);
-          appendFileSync(MATCH_LOG, `${new Date().toISOString()} [error:transform] ${msg}
+          appendFileSync(MATCH_LOG, JSON.stringify({ ts: new Date().toISOString(), action: "error", hook: "transform", message: msg }) + `
 `);
         } catch {}
       }
