@@ -19,10 +19,6 @@ const SUPPRESSORS: string[] = [
   "git", "branch", "sha",
   "url", "link", "api",
   "session", "service",
-  // Project/infrastructure identifiers — appear everywhere in infra repos
-  // and collide with skill tags auto-derived from descriptions
-  "prod", "dev", "staging", "bass", "digidp", "nwe", "amw",
-  "azure", "kubernete", "container", "cluster", "namespace",
   // Adjectives/adverbs
   "good", "better", "well", "new",
   // Pronouns, articles, connectives
