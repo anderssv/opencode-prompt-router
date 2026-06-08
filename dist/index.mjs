@@ -799,7 +799,16 @@ ${lines.join(`
             assistantText: textToScore.replace(/\n/g, " ").slice(0, 200),
             matches: newMatches.map((m) => ({
               skill: m.skill.name,
-              total: +m.breakdown.totalScore.toFixed(1)
+              stage1: +m.breakdown.stage1Score.toFixed(1),
+              stage2: +m.breakdown.stage2Bonus.toFixed(1),
+              sessionBonus: m.breakdown.sessionBonus,
+              total: +m.breakdown.totalScore.toFixed(1),
+              hits: m.breakdown.tokenHits.map((h) => ({
+                token: h.token,
+                fields: h.fields,
+                idf: +h.idf.toFixed(2),
+                score: +h.contribution.toFixed(1)
+              }))
             })),
             ms: result.tookMs
           };
