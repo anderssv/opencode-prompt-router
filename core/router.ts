@@ -112,14 +112,31 @@ export async function route(
 
   const excludeSet = new Set(config.excludeSkills ?? []);
 
+  // Seed gating: if AGENTS.md seeded tokens exist, only surface skills whose
+  // name/tag tokens overlap with the seeded context. This prevents technical
+  // skills (kotlin-tdd, prometheus-query, etc.) from firing in writing/notes
+  // projects that happen to discuss those topics.
+  const pinnedTokens = sessionCtx?.pinnedTokens ?? new Set<string>();
+  const hasSeedContext = pinnedTokens.size > 0;
+
+  function passesGate(skill: Skill): boolean {
+    if (!hasSeedContext) return true; // no AGENTS.md — no gating
+    const nameTokens = tokenize(skill.name);
+    const tagTokens = tokenize((skill.tags ?? []).join(" "));
+    for (const t of [...nameTokens, ...tagTokens]) {
+      if (pinnedTokens.has(t)) return true;
+    }
+    return false;
+  }
+
   const matches = scored
-    .filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name))
+    .filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name) && passesGate(skill))
     .sort((a, b) => b.score - a.score)
     .slice(0, config.topN);
 
   // Near-misses: scored > 0 but below threshold (top 3)
   const nearMisses = scored
-    .filter(({ skill, score }) => score > 0 && score < config.minScore && !excludeSet.has(skill.name))
+    .filter(({ skill, score }) => score > 0 && score < config.minScore && !excludeSet.has(skill.name) && passesGate(skill))
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 

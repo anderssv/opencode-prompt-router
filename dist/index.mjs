@@ -434,8 +434,21 @@ async function route(prompt, config, log, sessionCtx) {
     return { skill, score: totalScore, breakdown };
   });
   const excludeSet = new Set(config.excludeSkills ?? []);
-  const matches = scored.filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name)).sort((a, b) => b.score - a.score).slice(0, config.topN);
-  const nearMisses = scored.filter(({ skill, score }) => score > 0 && score < config.minScore && !excludeSet.has(skill.name)).sort((a, b) => b.score - a.score).slice(0, 3);
+  const pinnedTokens = sessionCtx?.pinnedTokens ?? new Set;
+  const hasSeedContext = pinnedTokens.size > 0;
+  function passesGate(skill) {
+    if (!hasSeedContext)
+      return true;
+    const nameTokens = tokenize(skill.name);
+    const tagTokens = tokenize((skill.tags ?? []).join(" "));
+    for (const t of [...nameTokens, ...tagTokens]) {
+      if (pinnedTokens.has(t))
+        return true;
+    }
+    return false;
+  }
+  const matches = scored.filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name) && passesGate(skill)).sort((a, b) => b.score - a.score).slice(0, config.topN);
+  const nearMisses = scored.filter(({ skill, score }) => score > 0 && score < config.minScore && !excludeSet.has(skill.name) && passesGate(skill)).sort((a, b) => b.score - a.score).slice(0, 3);
   const tookMs = Date.now() - start;
   const allNameTagTokens = new Set;
   for (const skill of skills) {
