@@ -838,6 +838,11 @@ ${lines.join(`
     }
   };
 };
+var module = {
+  id: "opencode-prompt-router",
+  server: PromptRouter
+};
 export {
+  module,
   PromptRouter
 };

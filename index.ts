@@ -10,7 +10,7 @@
  *   ~/.claude/skills/      (Claude Code skills, if present)
  *   <workdir>/.opencode/skills/  (project-local skills)
  */
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, PluginModule } from "@opencode-ai/plugin";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { access, readFile } from "node:fs/promises";
@@ -350,4 +350,9 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
       }
     },
   };
+};
+
+export const module: PluginModule = {
+  id: "opencode-prompt-router",
+  server: PromptRouter,
 };
