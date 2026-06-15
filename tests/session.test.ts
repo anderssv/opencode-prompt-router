@@ -61,7 +61,7 @@ describe("session context", () => {
     expect(getSessionWeights(ctx).size).toBe(0);
   });
 
-  it("pinned tokens from matched skills never decay", () => {
+  it("matched skill tokens decay normally (not pinned)", () => {
     const ctx = createSessionContext();
     recordTokens(ctx, ["kotlin"]);
     recordMatches(ctx, ["kotlin-tdd"], ["kotlin", "tdd"]);
@@ -74,10 +74,9 @@ describe("session context", () => {
     recordTokens(ctx, ["deploy"]);
 
     const weights = getSessionWeights(ctx, 0.9);
-    // "kotlin" and "tdd" are pinned — should still have weight >= 1.0
-    expect(weights.get("kotlin")!).toBeGreaterThanOrEqual(1.0);
-    expect(weights.get("tdd")!).toBeGreaterThanOrEqual(1.0);
-    // "deploy" is recent (age=0), also high
+    // "kotlin" and "tdd" should decay — not pinned
+    expect(weights.get("kotlin")!).toBeLessThan(1.0);
+    // "deploy" is recent, should have high weight
     expect(weights.get("deploy")!).toBeGreaterThan(0.3);
   });
 

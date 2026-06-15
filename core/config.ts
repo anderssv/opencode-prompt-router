@@ -19,6 +19,8 @@ const SUPPRESSORS: string[] = [
   "git", "branch", "sha",
   "url", "link", "api",
   "session", "service",
+  // Too generic in technical discussions — appear in too many unrelated contexts
+  "model", "team", "object", "context", "class", "function",
   // Adjectives/adverbs
   "good", "better", "well", "new",
   // Pronouns, articles, connectives

@@ -52,16 +52,15 @@ export function recordTokens(ctx: SessionContext, tokens: string[]): void {
 
 /**
  * Record skills that were matched (and surfaced) in this session.
- * Pins their name/tag tokens so they never decay.
+ * Does NOT pin tokens — pinning is reserved for AGENTS.md seeds only.
  */
 export function recordMatches(ctx: SessionContext, skillNames: string[], skillTokens?: string[]): void {
   for (const name of skillNames) {
     ctx.matchedSkills.add(name);
   }
+  // Record skill tokens into normal (decaying) session context only
   if (skillTokens) {
     for (const t of skillTokens) {
-      ctx.pinnedTokens.add(t);
-      // Also ensure pinned tokens are in the token map
       if (!ctx.tokens.has(t)) {
         ctx.tokens.set(t, { count: 1, lastSeen: ctx.messageCount });
       }

@@ -337,7 +337,6 @@ function recordMatches(ctx, skillNames, skillTokens) {
   }
   if (skillTokens) {
     for (const t of skillTokens) {
-      ctx.pinnedTokens.add(t);
       if (!ctx.tokens.has(t)) {
         ctx.tokens.set(t, { count: 1, lastSeen: ctx.messageCount });
       }
@@ -531,6 +530,12 @@ var SUPPRESSORS = [
   "api",
   "session",
   "service",
+  "model",
+  "team",
+  "object",
+  "context",
+  "class",
+  "function",
   "good",
   "better",
   "well",
