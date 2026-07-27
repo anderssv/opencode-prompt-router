@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { createSessionContext, recordTokens, recordMatches, getSessionWeights } from "../core/session";
+import { createSessionContext, recordTokens, recordMatches, getSessionWeights, isSkillOnCooldown, recordSkillInjected } from "../core/session";
 
 describe("session context", () => {
   it("starts empty", () => {
@@ -89,5 +89,36 @@ describe("session context", () => {
     const weights = getSessionWeights(ctx); // default 0.9
     // 0.9^7 = 0.478 — still above 0.3 threshold
     expect(weights.get("kotlin")!).toBeGreaterThan(0.3);
+  });
+});
+
+describe("skill cooldown", () => {
+  it("skill is on cooldown immediately after injection", () => {
+    const ctx = createSessionContext();
+    recordTokens(ctx, ["kotlin"]);
+    recordSkillInjected(ctx, "kotlin-tdd");
+    expect(isSkillOnCooldown(ctx, "kotlin-tdd")).toBe(true);
+  });
+
+  it("skill comes off cooldown after 5 messages", () => {
+    const ctx = createSessionContext();
+    recordTokens(ctx, ["kotlin"]);
+    recordSkillInjected(ctx, "kotlin-tdd");
+    // Advance 5 messages
+    for (let i = 0; i < 5; i++) recordTokens(ctx, ["other"]);
+    expect(isSkillOnCooldown(ctx, "kotlin-tdd")).toBe(false);
+  });
+
+  it("skill still on cooldown after 4 messages", () => {
+    const ctx = createSessionContext();
+    recordTokens(ctx, ["kotlin"]);
+    recordSkillInjected(ctx, "kotlin-tdd");
+    for (let i = 0; i < 4; i++) recordTokens(ctx, ["other"]);
+    expect(isSkillOnCooldown(ctx, "kotlin-tdd")).toBe(true);
+  });
+
+  it("uninjected skill is never on cooldown", () => {
+    const ctx = createSessionContext();
+    expect(isSkillOnCooldown(ctx, "kotlin-tdd")).toBe(false);
   });
 });

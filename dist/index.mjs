@@ -308,6 +308,7 @@ function deriveTags(skill, allSkills) {
 }
 
 // core/session.ts
+var SKILL_COOLDOWN_MESSAGES = 5;
 function createSessionContext() {
   return {
     tokens: new Map,
@@ -316,8 +317,18 @@ function createSessionContext() {
     messageCount: 0,
     turnInjectedSkills: new Set,
     lastScoredHash: "",
-    lastInjectionAt: 0
+    lastInjectionAt: 0,
+    skillCooldowns: new Map
   };
+}
+function isSkillOnCooldown(ctx, skillName) {
+  const last = ctx.skillCooldowns.get(skillName);
+  if (last === undefined)
+    return false;
+  return ctx.messageCount - last < SKILL_COOLDOWN_MESSAGES;
+}
+function recordSkillInjected(ctx, skillName) {
+  ctx.skillCooldowns.set(skillName, ctx.messageCount);
 }
 function recordTokens(ctx, tokens) {
   ctx.messageCount++;
@@ -421,7 +432,7 @@ async function route(prompt, config, log, sessionCtx) {
     const result = scoreSkill(prompt, skill, config, index);
     const nearThreshold = result.score >= config.minScore && result.score <= config.minScore * STAGE2_WINDOW_FACTOR;
     const stage2Bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
-    const sessBonus = sessionBonus(skill, sessionWeights);
+    const sessBonus = config.disableSessionBonus ? 0 : sessionBonus(skill, sessionWeights);
     const totalScore = result.score + stage2Bonus + sessBonus;
     const breakdown = {
       tokenHits: result.tokenHits,
@@ -446,7 +457,7 @@ async function route(prompt, config, log, sessionCtx) {
     }
     return false;
   }
-  const matches = scored.filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name) && passesGate(skill)).sort((a, b) => b.score - a.score).slice(0, config.topN);
+  const matches = scored.filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name) && passesGate(skill) && !isSkillOnCooldown(sessionCtx ?? { skillCooldowns: new Map, messageCount: 0 }, skill.name)).sort((a, b) => b.score - a.score).slice(0, config.topN);
   const nearMisses = scored.filter(({ skill, score }) => score > 0 && score < config.minScore && !excludeSet.has(skill.name) && passesGate(skill)).sort((a, b) => b.score - a.score).slice(0, 3);
   const tookMs = Date.now() - start;
   const allNameTagTokens = new Set;
@@ -669,6 +680,7 @@ var PromptRouter = async ({ directory, client }, options) => {
           recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
           for (const m of result.matches) {
             sessionCtx.turnInjectedSkills.add(m.skill.name);
+            recordSkillInjected(sessionCtx, m.skill.name);
           }
           sessionCtx.lastInjectionAt = sessionCtx.messageCount;
         }
@@ -759,7 +771,7 @@ var PromptRouter = async ({ directory, client }, options) => {
         if (skillPaths.length === 0)
           return;
         const transformMinScore = Math.round(minScore * 1.5);
-        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore };
+        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore, disableSessionBonus: true };
         const result = await route(textToScore, config, undefined, sessionCtx);
         if (!result.preamble)
           return;
@@ -774,6 +786,7 @@ var PromptRouter = async ({ directory, client }, options) => {
         recordMatches(sessionCtx, newMatches.map((m) => m.skill.name), skillTokens);
         for (const m of newMatches) {
           sessionCtx.turnInjectedSkills.add(m.skill.name);
+          recordSkillInjected(sessionCtx, m.skill.name);
         }
         sessionCtx.lastInjectionAt = sessionCtx.messageCount;
         let lastUserIdx = -1;

@@ -20,7 +20,11 @@ export interface SessionContext {
   lastScoredHash: string;
   /** messageCount at last injection (for cooldown) */
   lastInjectionAt: number;
+  /** messageCount when each skill was last injected (for per-skill cooldown) */
+  skillCooldowns: Map<string, number>;
 }
+
+const SKILL_COOLDOWN_MESSAGES = 5;
 
 export function createSessionContext(): SessionContext {
   return {
@@ -31,7 +35,18 @@ export function createSessionContext(): SessionContext {
     turnInjectedSkills: new Set(),
     lastScoredHash: "",
     lastInjectionAt: 0,
+    skillCooldowns: new Map(),
   };
+}
+
+export function isSkillOnCooldown(ctx: SessionContext, skillName: string): boolean {
+  const last = ctx.skillCooldowns.get(skillName);
+  if (last === undefined) return false;
+  return (ctx.messageCount - last) < SKILL_COOLDOWN_MESSAGES;
+}
+
+export function recordSkillInjected(ctx: SessionContext, skillName: string): void {
+  ctx.skillCooldowns.set(skillName, ctx.messageCount);
 }
 
 /**

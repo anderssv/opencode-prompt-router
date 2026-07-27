@@ -17,7 +17,7 @@ import { access, readFile } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
 import { route, extractProjectTokens } from "./core/router";
 import { DEFAULT_CONFIG } from "./core/config";
-import { createSessionContext, recordTokens, recordMatches, getSessionWeights } from "./core/session";
+import { createSessionContext, recordTokens, recordMatches, getSessionWeights, recordSkillInjected } from "./core/session";
 import { tokenize } from "./core/tokenizer";
 import type { SessionContext } from "./core/session";
 
@@ -148,9 +148,10 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
           ...tokenize((m.skill.tags ?? []).join(" ")),
         ]);
         recordMatches(sessionCtx, result.matches.map((m) => m.skill.name), skillTokens);
-        // Track what we injected this turn
+        // Track what we injected this turn + per-skill cooldown
         for (const m of result.matches) {
           sessionCtx.turnInjectedSkills.add(m.skill.name);
+          recordSkillInjected(sessionCtx, m.skill.name);
         }
         sessionCtx.lastInjectionAt = sessionCtx.messageCount;
       }
@@ -258,7 +259,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
 
         // Higher threshold for assistant text (noisier)
         const transformMinScore = Math.round(minScore * 1.5);
-        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore };
+        const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore, disableSessionBonus: true };
         const result = await route(textToScore, config, undefined, sessionCtx);
 
         if (!result.preamble) return;
@@ -278,6 +279,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
         recordMatches(sessionCtx, newMatches.map((m) => m.skill.name), skillTokens);
         for (const m of newMatches) {
           sessionCtx.turnInjectedSkills.add(m.skill.name);
+          recordSkillInjected(sessionCtx, m.skill.name);
         }
         sessionCtx.lastInjectionAt = sessionCtx.messageCount;
 

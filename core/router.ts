@@ -7,6 +7,7 @@ import { deriveTags } from "./enrich";
 import { tokenize } from "./tokenizer";
 import { getSessionWeights } from "./session";
 import type { SessionContext } from "./session";
+import { isSkillOnCooldown } from "./session";
 
 import type { CorpusIndex } from "./corpus";
 import type { Skill } from "./types";
@@ -95,7 +96,8 @@ export async function route(
     const stage2Bonus = nearThreshold ? scoreStage2(prompt, skill, config, index) : 0;
 
     // Session affinity: flat bonus if skill name/tags overlap with session context
-    const sessBonus = sessionBonus(skill, sessionWeights);
+    // Disabled for transform hook — assistant text is verbose, bonus adds too much noise
+    const sessBonus = config.disableSessionBonus ? 0 : sessionBonus(skill, sessionWeights);
 
     const totalScore = result.score + stage2Bonus + sessBonus;
 
@@ -130,7 +132,12 @@ export async function route(
   }
 
   const matches = scored
-    .filter(({ skill, score }) => score >= config.minScore && !excludeSet.has(skill.name) && passesGate(skill))
+    .filter(({ skill, score }) =>
+      score >= config.minScore &&
+      !excludeSet.has(skill.name) &&
+      passesGate(skill) &&
+      !isSkillOnCooldown(sessionCtx ?? { skillCooldowns: new Map(), messageCount: 0 } as any, skill.name)
+    )
     .sort((a, b) => b.score - a.score)
     .slice(0, config.topN);
 

@@ -23,6 +23,8 @@ export interface RouterConfig {
   debug?: boolean;
   /** Skills to never surface (e.g. meta-skills like find-skills) */
   excludeSkills?: string[];
+  /** If true, skip session affinity bonus in scoring (used by transform hook) */
+  disableSessionBonus?: boolean;
 }
 
 export interface TokenHit {
