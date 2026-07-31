@@ -258,7 +258,7 @@ export const PromptRouter: Plugin = async ({ directory, client }, options?: Prom
         if (skillPaths.length === 0) return;
 
         // Higher threshold for assistant text (noisier)
-        const transformMinScore = Math.round(minScore * 1.5);
+        const transformMinScore = Math.round(minScore * 2);
         const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore, disableSessionBonus: true };
         const result = await route(textToScore, config, undefined, sessionCtx);
 

@@ -770,7 +770,7 @@ var PromptRouter = async ({ directory, client }, options) => {
         const skillPaths = await resolveSkillPaths(directory);
         if (skillPaths.length === 0)
           return;
-        const transformMinScore = Math.round(minScore * 1.5);
+        const transformMinScore = Math.round(minScore * 2);
         const config = { ...DEFAULT_CONFIG, skillPaths, debug: false, minScore: transformMinScore, disableSessionBonus: true };
         const result = await route(textToScore, config, undefined, sessionCtx);
         if (!result.preamble)

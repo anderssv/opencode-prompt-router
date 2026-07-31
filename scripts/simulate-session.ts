@@ -168,7 +168,7 @@ for (const msg of messages) {
       sessionCtx.lastScoredHash = textHash;
 
       // Higher threshold for transform (1.5x)
-      const transformConfig = { ...config, minScore: Math.round(config.minScore * 1.5) };
+      const transformConfig = { ...config, minScore: Math.round(config.minScore * 2), disableSessionBonus: true };
       const transformResult = await route(lastAssistantText, transformConfig, undefined, sessionCtx);
       if (transformResult.preamble) {
         // Filter out skills already injected this turn
