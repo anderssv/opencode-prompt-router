@@ -231,7 +231,8 @@ function scoreSkill(prompt, skill, config, index) {
     return { score: 0, tokenHits: [] };
   const minTokens = config.minMatchingTokens ?? 1;
   const eligibleCount = new Set(tokens).size;
-  if (eligibleCount >= 5 && hits.length < minTokens)
+  const distinctHitTokens = new Set(hits.map((h) => h.token)).size;
+  if (eligibleCount >= 5 && distinctHitTokens < minTokens)
     return { score: 0, tokenHits: [] };
   hits.sort((a, b) => b.contribution - a.contribution);
   const topN = config.maxMatchingTokens ?? hits.length;

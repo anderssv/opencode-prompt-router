@@ -104,7 +104,9 @@ export function scoreSkill(
 
   const minTokens = config.minMatchingTokens ?? 1;
   const eligibleCount = new Set(tokens).size;
-  if (eligibleCount >= 5 && hits.length < minTokens) return { score: 0, tokenHits: [] };
+  // Count distinct matching tokens (not total hits — same token twice doesn't count as 2)
+  const distinctHitTokens = new Set(hits.map(h => h.token)).size;
+  if (eligibleCount >= 5 && distinctHitTokens < minTokens) return { score: 0, tokenHits: [] };
 
   // Sort descending and sum only top N contributions
   hits.sort((a, b) => b.contribution - a.contribution);
